@@ -441,6 +441,20 @@
     return p ? p.image_url : null;
   }
 
+  /** Link do sklepu ze znacznikiem źródła (utm), żeby sklep widział w swoich statystykach ruch z Remny.
+   *  Nie nadpisuje utm, które już są w adresie; zachowuje inne parametry (np. ?variant=…) i #kotwicę. */
+  function shopUrl(url, medium) {
+    if (!url) return url;
+    try {
+      const u = new URL(url);
+      if (!u.searchParams.has('utm_source')) {
+        u.searchParams.set('utm_source', 'remna');
+        u.searchParams.set('utm_medium', medium || 'referral');
+      }
+      return u.toString();
+    } catch (e) { return url; }
+  }
+
   function toQueryString(params) {
     return params.map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
   }
@@ -766,7 +780,7 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, unknownFields, pickImage, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    restParams, unknownFields, pickImage, shopUrl, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

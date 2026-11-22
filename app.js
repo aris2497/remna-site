@@ -408,7 +408,7 @@
         ${p.description ? `<h2 class="desc-title">${esc(t('detail.description'))}</h2><div class="desc">${esc(p.description.slice(0, 1800))}${p.description.length > 1800 ? '…' : ''}</div>` : ''}
         <p class="open-note">${esc(t('detail.openNote'))}</p>
       </div>`;
-    $('#detail-open').href = p.url;
+    $('#detail-open').href = R.shopUrl(p.url, N.isNative ? 'android' : 'web');
     $('#detail-fav').setAttribute('aria-pressed', favorites.has(p.id));
     $('#detail-body').scrollTop = 0;
     renderLive(p.id);
@@ -448,7 +448,7 @@
     e.preventDefault();
     if (detailProduct) {
       source.track('shop_click', { product_id: detailProduct.id, shop_id: detailProduct.shop_id });
-      N.openExternal(detailProduct.url);
+      N.openExternal(R.shopUrl(detailProduct.url, N.isNative ? 'android' : 'web'));
     }
   });
 
