@@ -288,7 +288,7 @@
 
   // --- Zapytanie do bazy (Supabase / PostgREST) -------------------------------
   const LIST_FIELDS = 'id,shop_id,title,url,image_url,kind,currency,price_min,price_unit,price_per_m,price_per_m_eur,' +
-    'piece_length_m,stock_m,composition,fibers,colors,pattern,width_cm,weight_gsm,available,first_seen_at';
+    'piece_length_m,stock_m,composition,fibers,colors,color_images,pattern,width_cm,weight_gsm,available,first_seen_at';
 
   function sinceIso(days, now) {
     return new Date((now || Date.now()) - days * 86400000).toISOString();
@@ -431,6 +431,14 @@
       }
     }
     return Object.assign({}, f, { countries, shops });
+  }
+
+  /** Zdjęcie oferty: przy filtrze koloru wariant w tym kolorze (color_images), inaczej zdjęcie główne. */
+  function pickImage(p, f) {
+    const imgs = p && p.color_images;
+    const wanted = f && f.colors && f.colors.length ? colorsWithNear(normalizeFilters(f).colors) : [];
+    for (const c of wanted) if (imgs && imgs[c]) return imgs[c];
+    return p ? p.image_url : null;
   }
 
   function toQueryString(params) {
@@ -758,7 +766,7 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, unknownFields, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    restParams, unknownFields, pickImage, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

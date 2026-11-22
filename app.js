@@ -214,8 +214,10 @@
     let price;
     if (pr.unit === 'per_m') price = `${esc(pr.main)}<small>${esc(t('card.perM'))}</small>` + (pr.piece ? ` <small>· ${esc(t('card.piece', pr.piece))}</small>` : '');
     else price = `${esc(pr.main)} <small>${esc(t('card.priceUnknown'))}</small>`;
-    const img = p.image_url
-      ? `<img src="${esc(R.imageUrl(p.image_url, 480))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+    // w wynikach przy filtrze koloru: zdjęcie wariantu w tym kolorze (ulubione: zdjęcie główne)
+    const src = R.pickImage(p, o.favorites ? null : state.filters);
+    const img = src
+      ? `<img src="${esc(R.imageUrl(src, 480))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
       : `<span class="noimg">Remna</span>`;
     const gone = (o.gone || liveGone(p.id)) ? `<span class="flag gone">${esc(t('fav.gone'))}</span>` : (isNew(p) ? `<span class="flag">${esc(t('card.new'))}</span>` : '');
     const label = labelLine(p);
@@ -391,7 +393,8 @@
       [t('detail.shop'), shop ? esc(shop.name + (shop.country ? ' · ' + countryName(shop.country) : '')) : esc(p.shop_id)],
     ];
     if (p.first_seen_at) rows.push([t('detail.firstSeen'), esc(fmtDate(p.first_seen_at))]);
-    const img = p.image_url ? `<img src="${esc(R.imageUrl(p.image_url, 1200))}" alt="" referrerpolicy="no-referrer">` : '';
+    const heroSrc = R.pickImage(p, state.view === 'search' ? state.filters : null);
+    const img = heroSrc ? `<img src="${esc(R.imageUrl(heroSrc, 1200))}" alt="" referrerpolicy="no-referrer">` : '';
     $('#detail-body').innerHTML = `
       <div class="detail-hero">${img}</div>
       <div class="detail-main">
@@ -749,7 +752,7 @@
       el.innerHTML = `<div class="empty"><strong>${esc(t('fav.empty'))}</strong>${esc(t('fav.emptyHint'))}</div>`;
       return;
     }
-    el.innerHTML = list.map((p) => cardHtml(p, { gone: p.removed_at || p.available === false })).join('');
+    el.innerHTML = list.map((p) => cardHtml(p, { gone: p.removed_at || p.available === false, favorites: true })).join('');
     if (!favRefreshed) {
       favRefreshed = true;
       try {
