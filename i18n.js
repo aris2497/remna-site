@@ -144,7 +144,8 @@
     'more.about': 'O Remnie',
     'more.aboutText': 'Deadstock to nadwyżki tkanin z domów mody i tkalni: jakościowe materiały w ograniczonych ilościach, często w niższych cenach. Remna zbiera je w jednym miejscu, żeby projektanci i krawcy nie musieli przeglądać dziesiątek sklepów.',
     'more.privacy': 'Prywatność',
-    'more.privacyText': 'Remna nie wymaga konta. Ulubione i alerty są zapisane tylko na tym telefonie.',
+    'more.privacyText': 'Remna nie wymaga konta. Ulubione i alerty są zapisane tylko na tym urządzeniu.',
+    'more.privacyLink': 'Pełna polityka prywatności',
     'intro.title': 'Witaj w Remnie',
     'intro.lead': 'Tkaniny deadstock to nadwyżki z domów mody i tkalni: piękne materiały w ograniczonych ilościach. Remna przeszukuje za Ciebie europejskie sklepy z takimi tkaninami.',
     'intro.point1': 'Szukaj po materiale, składzie (np. 100% jedwabiu), kolorze, wzorze i cenie za metr.',
@@ -333,7 +334,8 @@
     'more.about': 'About Remna',
     'more.aboutText': 'Deadstock is surplus fabric from fashion houses and mills: quality materials in limited quantities, often at lower prices. Remna gathers them in one place so designers and makers do not have to browse dozens of shops.',
     'more.privacy': 'Privacy',
-    'more.privacyText': 'Remna needs no account. Saved fabrics and alerts stay on this phone only.',
+    'more.privacyText': 'Remna needs no account. Saved fabrics and alerts stay on this device only.',
+    'more.privacyLink': 'Full privacy policy',
     'more.shopOwner': 'Run a shop?',
     'more.shopOwnerText': 'Want your shop added or removed? Write to us and we will do it straight away.',
     'more.version': (v) => `Version ${v}`,
@@ -370,7 +372,7 @@
   function localeOf(lang) { const l = LANGS.find((x) => x.code === lang); return l ? l.locale : 'en-GB'; }
 
   function fmtNum(n, lang) {
-    return new Intl.NumberFormat(localeOf(lang), { maximumFractionDigits: 1 }).format(n);
+    return new Intl.NumberFormat(localeOf(lang), { maximumFractionDigits: 2 }).format(n);
   }
 
   // „1 oferta / 3 oferty / 5 ofert” po polsku; w pozostałych językach liczba pojedyncza i mnoga
