@@ -309,10 +309,15 @@
       p.push(['main_pct', 'gte.' + n.purity]);
     } else if (n.fibers.length) p.push(['fibers', 'ov.{' + n.fibers.join(',') + '}']);
     if (n.noSynthetic) p.push(['synthetic_pct', 'lte.' + MAX_SYNTHETIC_PCT]);
+    // Warunki „lub” (oferty z nieznaną wartością zostają); kilka naraz łączymy w and=(or(...),or(...))
+    const ors = [];
     if (n.stockKnown) p.push(['stock_m', 'gte.' + (n.minStock || 0.01)]);
-    else if (n.minStock) p.push(['or', '(stock_m.is.null,stock_m.gte.' + n.minStock + ')']);
+    else if (n.minStock) ors.push('stock_m.is.null,stock_m.gte.' + n.minStock);
     if (n.colors.length) p.push(['colors', 'ov.{' + colorsWithNear(n.colors).join(',') + '}']);
-    if (n.pattern) p.push(['pattern', 'eq.' + n.pattern]);
+    // wzór: oferty z nierozpoznanym wzorem (null) pokazujemy zawsze, ukrywamy tylko ten przeciwny
+    if (n.pattern) ors.push('pattern.is.null,pattern.eq.' + n.pattern);
+    if (ors.length === 1) p.push(['or', '(' + ors[0] + ')']);
+    else if (ors.length) p.push(['and', '(' + ors.map((x) => 'or(' + x + ')').join(',') + ')']);
     if (n.weightMin != null || n.weightMax != null) {
       p.push(['weight_gsm', n.weightMin != null ? 'gte.' + n.weightMin : 'gt.0']);
       if (n.weightMax != null) p.push(['weight_gsm', 'lt.' + n.weightMax]);
@@ -336,17 +341,46 @@
     return p;
   }
 
-  /** Sklepy dopuszczone przez filtry sklepów i krajów; null = wszystkie. */
+  /** Sklepy dopuszczone przez filtry: SUMA sklepów z wybranych krajów i pojedynczo wybranych sklepów; null = wszystkie.
+   *  (Kraj zapisujemy jako kraj, nie listę sklepów, żeby nowe sklepy z tego kraju też się łapały, np. w alertach.) */
   function allowedShops(n, shopsByCountry) {
-    let ids = null;
-    if (n.countries.length) {
-      ids = [];
-      for (const c of n.countries) ids.push(...(shopsByCountry[c] || []));
-      if (!ids.length) ids = ['__none__'];
+    if (!n.countries.length && !n.shops.length) return null;
+    const ids = [];
+    for (const c of n.countries) ids.push(...(shopsByCountry[c] || []));
+    ids.push(...n.shops);
+    return ids.length ? Array.from(new Set(ids)).sort() : ['__none__'];
+  }
+
+  function countryOfShop(id, shopsByCountry) {
+    return Object.keys(shopsByCountry).find((c) => (shopsByCountry[c] || []).includes(id)) || null;
+  }
+
+  /** Kliknięcie kraju w sekcji „Sklepy”: zaznacza / odznacza cały kraj (pojedyncze sklepy z niego stają się zbędne). */
+  function toggleCountry(f, c, shopsByCountry) {
+    const own = shopsByCountry[c] || [];
+    const shops = f.shops.filter((x) => !own.includes(x));
+    const countries = f.countries.includes(c) ? f.countries.filter((x) => x !== c) : f.countries.concat(c);
+    return Object.assign({}, f, { countries, shops });
+  }
+
+  /** Kliknięcie sklepu: w zaznaczonym kraju odznacza tylko ten sklep (reszta kraju zostaje),
+   *  a gdy zaznaczone są już wszystkie sklepy kraju, zwija je do kraju. */
+  function toggleShop(f, id, shopsByCountry) {
+    const c = countryOfShop(id, shopsByCountry);
+    const own = c ? shopsByCountry[c] : [id];
+    let countries = f.countries.slice();
+    let shops = f.shops.slice();
+    if (c && countries.includes(c)) {
+      countries = countries.filter((x) => x !== c);
+      shops = shops.concat(own.filter((x) => x !== id && !shops.includes(x)));
+    } else {
+      shops = shops.includes(id) ? shops.filter((x) => x !== id) : shops.concat(id);
+      if (c && own.length > 1 && own.every((x) => shops.includes(x))) {
+        shops = shops.filter((x) => !own.includes(x));
+        countries = countries.concat(c);
+      }
     }
-    if (n.shops.length) ids = ids ? ids.filter((x) => n.shops.includes(x)) : n.shops.slice();
-    if (ids && !ids.length) ids = ['__none__'];
-    return ids ? Array.from(new Set(ids)).sort() : null;
+    return Object.assign({}, f, { countries, shops });
   }
 
   function toQueryString(params) {
@@ -367,7 +401,7 @@
     if (n.stockKnown && stock == null) return false;
     if (n.minStock && stock != null && stock < n.minStock) return false;
     if (n.colors.length && !(p.colors || []).some((x) => colorsWithNear(n.colors).includes(x))) return false;
-    if (n.pattern && p.pattern !== n.pattern) return false;
+    if (n.pattern && p.pattern && p.pattern !== n.pattern) return false;
     if (n.weightMin != null || n.weightMax != null) {
       const g = p.weight_gsm == null ? null : Number(p.weight_gsm);
       if (g == null || !(g > 0) || (n.weightMin != null && g < n.weightMin) || (n.weightMax != null && g >= n.weightMax)) return false;
@@ -647,7 +681,7 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, toQueryString, allowedShops, matchLocal, sortLocal,
+    restParams, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

@@ -548,12 +548,23 @@
     html.push(`<div class="fgroup"><h3>${esc(t('filters.newDays'))}</h3><div class="chips">` +
       chip('new', '', t('filters.newAny'), !f.newDays) +
       [1, 7, 30].map((d) => chip('new', d, t('filters.new' + d), f.newDays === d)).join('') + '</div></div>');
-    if (countries.length) {
-      html.push(`<div class="fgroup">${groupHead('filters.countries', 'countries', countries, f.countries)}<div class="chips">` +
-        countries.map((c) => chip('country', c, countryName(c), f.countries.includes(c))).join('') + '</div></div>');
-    }
-    html.push(`<div class="fgroup">${groupHead('filters.shops', 'shops', source.shops.map((s) => s.id), f.shops)}<div class="chips">` +
-      source.shops.map((s) => chip('shop', s.id, s.name, f.shops.includes(s.id))).join('') + '</div></div>');
+    // Sklepy pogrupowane według krajów: kraj = wszystkie jego sklepy (także przyszłe), wybory się sumują
+    const byCountry = source.shopsByCountry;
+    const shopName = Object.fromEntries(source.shops.map((s) => [s.id, s.name]));
+    const grouped = new Set(countries.flatMap((c) => byCountry[c] || []));
+    const loose = source.shops.filter((s) => !grouped.has(s.id)).map((s) => s.id);
+    const shopChips = (ids, whole) => ids.slice().sort((a, b) => (shopName[a] || a).localeCompare(shopName[b] || b))
+      .map((id) => chip('shop', id, shopName[id] || id, whole || f.shops.includes(id))).join('');
+    html.push(`<div class="fgroup"><h3>${esc(t('filters.shops'))}</h3>` +
+      `<div class="chips">${chip('shop', '', t('filters.anyShop'), !f.countries.length && !f.shops.length)}</div>` +
+      countries.map((c) => {
+        const on = f.countries.includes(c);
+        return `<div class="shop-country"><button type="button" class="country-head" data-country="${esc(c)}" aria-pressed="${on}">` +
+          `<span class="tick" aria-hidden="true"></span>${esc(countryName(c))}</button>` +
+          `<div class="chips">${shopChips(byCountry[c] || [], on)}</div></div>`;
+      }).join('') +
+      (loose.length ? `<div class="chips">${shopChips(loose, false)}</div>` : '') +
+      '</div>');
     $('#filters-body').innerHTML = html.join('');
     syncWeightSlider(null);
     updateApplyCount();
@@ -583,6 +594,14 @@
       $('#filters-body').scrollTop = y0;
       return;
     }
+    const ch = e.target.closest('.country-head');
+    if (ch) {
+      state.draft = R.normalizeFilters(R.toggleCountry(f, ch.dataset.country, source.shopsByCountry));
+      const y1 = $('#filters-body').scrollTop;
+      renderFilterSheet();
+      $('#filters-body').scrollTop = y1;
+      return;
+    }
     const b = e.target.closest('.chip');
     if (!b) return;
     const toggle = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v));
@@ -603,8 +622,11 @@
     else if ('price' in b.dataset) f.maxPrice = b.dataset.price ? Number(b.dataset.price) : null;
     else if ('width' in b.dataset) f.minWidth = b.dataset.width ? Number(b.dataset.width) : null;
     else if ('new' in b.dataset) f.newDays = b.dataset.new ? Number(b.dataset.new) : null;
-    else if (b.dataset.country) f.countries = toggle(f.countries, b.dataset.country);
-    else if (b.dataset.shop) f.shops = toggle(f.shops, b.dataset.shop);
+    // pusty chip = „Dowolny sklep” (czyści kraje i sklepy)
+    else if ('shop' in b.dataset) {
+      if (!b.dataset.shop) { f.countries = []; f.shops = []; }
+      else Object.assign(f, R.toggleShop(f, b.dataset.shop, source.shopsByCountry));
+    }
     state.draft = R.normalizeFilters(f);
     const y = $('#filters-body').scrollTop;
     renderFilterSheet();
