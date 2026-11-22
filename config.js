@@ -5,7 +5,7 @@ window.REMNA_CONFIG = {
   supabaseUrl: 'https://ayoipaivjbixtuejdaqd.supabase.co',
   supabaseKey: 'sb_publishable_DXRm86QQYlTACvTiDllUEQ_7-fiKEYe',
   demoUrl: 'data/demo.json',
-  version: '1.0.0',
+  version: '1.0.1',
   contactEmail: 'remna.app@gmail.com',   // adres kontaktowy Remny
   webUrl: 'https://remnafabrics.com/',   // adres wersji webowej (linki do udostępniania)
 };

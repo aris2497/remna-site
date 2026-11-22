@@ -81,7 +81,7 @@
   // --- Tłumaczenia statycznego HTML ---------------------------------------------
   function applyI18n() {
     document.documentElement.lang = I.getLang();
-    document.title = 'Remna – ' + t('app.tagline').charAt(0).toLowerCase() + t('app.tagline').slice(1);
+    document.title = 'Remna – Deadstock Fabrics';   // nazwa aplikacji (jak w Google Play), w każdym języku ta sama
     document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
     document.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });

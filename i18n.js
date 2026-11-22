@@ -4,7 +4,7 @@
   'use strict';
 
   const pl = {
-    'app.tagline': 'Tkaniny deadstock z europejskich sklepów',
+    'app.tagline': 'Tkaniny deadstock z wielu sklepów',
     'tab.search': 'Szukaj',
     'tab.favorites': 'Ulubione',
     'tab.alerts': 'Alerty',
@@ -141,7 +141,7 @@
     'more.title': 'Więcej',
     'more.language': 'Język',
     'more.sources': 'Sklepy w Remnie',
-    'more.sourcesNote': (n) => `Remna przeszukuje ${n} ${plForm(n, 'sklep', 'sklepy', 'sklepów')} z tkaninami deadstock w Europie. Dane odświeżamy kilka razy dziennie.`,
+    'more.sourcesNote': (n) => `Remna przeszukuje ${n} ${plForm(n, 'sklep', 'sklepy', 'sklepów')} z tkaninami deadstock. Dane odświeżamy kilka razy dziennie.`,
     'more.offers': (n) => fmtCount(n, 'pl'),
     'more.about': 'O Remnie',
     'more.aboutText': 'Deadstock to nadwyżki tkanin z domów mody i tkalni: jakościowe materiały w ograniczonych ilościach, często w niższych cenach. Remna zbiera je w jednym miejscu, żeby projektanci i krawcy nie musieli przeglądać dziesiątek sklepów.',
@@ -149,7 +149,7 @@
     'more.privacyText': 'Remna nie wymaga konta. Ulubione i alerty są zapisane tylko na tym urządzeniu.',
     'more.privacyLink': 'Pełna polityka prywatności',
     'intro.title': 'Witaj w Remnie',
-    'intro.lead': 'Tkaniny deadstock to nadwyżki z domów mody i tkalni: piękne materiały w ograniczonych ilościach. Remna przeszukuje za Ciebie europejskie sklepy z takimi tkaninami.',
+    'intro.lead': 'Tkaniny deadstock to nadwyżki z domów mody i tkalni: piękne materiały w ograniczonych ilościach. Remna przeszukuje za Ciebie sklepy z takimi tkaninami.',
     'intro.point1': 'Szukaj po materiale, składzie (np. 100% jedwabiu), kolorze, wzorze i cenie za metr.',
     'intro.point2': 'Zapisuj ulubione i alerty: zobaczysz, co nowego pojawiło się od ostatniej wizyty.',
     'intro.point3': 'Kupujesz bezpośrednio w sklepie. Remna nie pośredniczy w płatności i nie wymaga konta.',
@@ -180,7 +180,7 @@
   };
 
   const en = {
-    'app.tagline': 'Deadstock fabrics from European shops',
+    'app.tagline': 'Deadstock fabrics from many shops',
     'tab.search': 'Search',
     'tab.favorites': 'Saved',
     'tab.alerts': 'Alerts',
@@ -317,10 +317,10 @@
     'more.title': 'More',
     'more.language': 'Language',
     'more.sources': 'Shops on Remna',
-    'more.sourcesNote': (n) => `Remna searches ${n} deadstock fabric ${n === 1 ? 'shop' : 'shops'} across Europe. Listings are refreshed several times a day.`,
+    'more.sourcesNote': (n) => `Remna searches ${n} deadstock fabric ${n === 1 ? 'shop' : 'shops'}. Listings are refreshed several times a day.`,
     'more.offers': (n) => fmtCount(n, 'en'),
     'intro.title': 'Welcome to Remna',
-    'intro.lead': 'Deadstock fabrics are surplus from fashion houses and mills: beautiful materials in limited quantities. Remna searches European shops that sell them, so you do not have to.',
+    'intro.lead': 'Deadstock fabrics are surplus from fashion houses and mills: beautiful materials in limited quantities. Remna searches the shops that sell them, so you do not have to.',
     'intro.point1': 'Search by material, composition (e.g. 100% silk), colour, pattern and price per metre.',
     'intro.point2': 'Save favourites and alerts to see what is new since your last visit.',
     'intro.point3': 'You buy directly from the shop. Remna does not handle payment and needs no account.',

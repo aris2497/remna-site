@@ -8,7 +8,7 @@
     const countries = (names) => Object.fromEntries(Object.entries(names).map(([k, v]) => ['country.' + k, v]));
 
     I.addDict('de', Object.assign({
-      'app.tagline': `Deadstock-Stoffe aus europäischen Shops`,
+      'app.tagline': `Deadstock-Stoffe aus vielen Shops`,
       'tab.search': `Suchen`, 'tab.favorites': `Gemerkt`, 'tab.alerts': `Alarme`, 'tab.more': `Mehr`,
       'search.placeholder': `Suche: Seide, Tweed, Leinen…`, 'search.clear': `Löschen`,
       'filters.open': `Filter`, 'filters.title': `Filter`, 'filters.reset': `Filter zurücksetzen`,
@@ -71,10 +71,10 @@
       'alerts.pushSoon': `Benachrichtigungen aufs Handy kommen in der nächsten Version. Bis dahin werden neue Angebote bei jedem Öffnen der App gezählt.`,
       'alerts.checking': `Suche nach neuen Angeboten…`,
       'more.title': `Mehr`, 'more.language': `Sprache`, 'more.sources': `Shops in Remna`,
-      'more.sourcesNote': (n) => `Remna durchsucht ${n} Shops mit Deadstock-Stoffen in Europa. Die Angebote werden mehrmals täglich aktualisiert.`,
+      'more.sourcesNote': (n) => `Remna durchsucht ${n} Shops mit Deadstock-Stoffen. Die Angebote werden mehrmals täglich aktualisiert.`,
       'more.offers': (n) => fmtCount(n, 'de'),
       'intro.title': `Willkommen bei Remna`,
-      'intro.lead': `Deadstock-Stoffe sind Überbestände von Modehäusern und Webereien: schöne Materialien in begrenzter Menge. Remna durchsucht für dich europäische Shops, die sie verkaufen.`,
+      'intro.lead': `Deadstock-Stoffe sind Überbestände von Modehäusern und Webereien: schöne Materialien in begrenzter Menge. Remna durchsucht für dich die Shops, die sie verkaufen.`,
       'intro.point1': `Suche nach Material, Zusammensetzung (z. B. 100 % Seide), Farbe, Muster und Meterpreis.`,
       'intro.point2': `Merke dir Stoffe und speichere Alarme, um zu sehen, was seit deinem letzten Besuch neu ist.`,
       'intro.point3': `Du kaufst direkt im Shop. Remna wickelt keine Zahlungen ab und braucht kein Konto.`,
@@ -100,7 +100,7 @@
       AT: 'Österreich', IE: 'Irland' })));
 
     I.addDict('fr', Object.assign({
-      'app.tagline': `Tissus deadstock de boutiques européennes`,
+      'app.tagline': `Tissus deadstock de nombreuses boutiques`,
       'tab.search': `Rechercher`, 'tab.favorites': `Favoris`, 'tab.alerts': `Alertes`, 'tab.more': `Plus`,
       'search.placeholder': `Rechercher : soie, tweed, lin…`, 'search.clear': `Effacer`,
       'filters.open': `Filtres`, 'filters.title': `Filtres`, 'filters.reset': `Effacer les filtres`,
@@ -163,10 +163,10 @@
       'alerts.pushSoon': `Les notifications sur téléphone arrivent dans la prochaine version. En attendant, les nouvelles annonces sont comptées à chaque ouverture de l’app.`,
       'alerts.checking': `Recherche de nouvelles annonces…`,
       'more.title': `Plus`, 'more.language': `Langue`, 'more.sources': `Boutiques sur Remna`,
-      'more.sourcesNote': (n) => `Remna parcourt ${n} boutiques de tissus deadstock en Europe. Les annonces sont actualisées plusieurs fois par jour.`,
+      'more.sourcesNote': (n) => `Remna parcourt ${n} boutiques de tissus deadstock. Les annonces sont actualisées plusieurs fois par jour.`,
       'more.offers': (n) => fmtCount(n, 'fr'),
       'intro.title': `Bienvenue sur Remna`,
-      'intro.lead': `Les tissus deadstock sont des surplus de maisons de mode et de tissages : de belles matières en quantités limitées. Remna parcourt pour vous les boutiques européennes qui les vendent.`,
+      'intro.lead': `Les tissus deadstock sont des surplus de maisons de mode et de tissages : de belles matières en quantités limitées. Remna parcourt pour vous les boutiques qui les vendent.`,
       'intro.point1': `Recherchez par matière, composition (par ex. 100 % soie), couleur, motif et prix au mètre.`,
       'intro.point2': `Enregistrez favoris et alertes pour voir ce qui est nouveau depuis votre dernière visite.`,
       'intro.point3': `Vous achetez directement en boutique. Remna ne gère pas le paiement et ne demande pas de compte.`,
@@ -192,7 +192,7 @@
       AT: 'Autriche', IE: 'Irlande' })));
 
     I.addDict('it', Object.assign({
-      'app.tagline': `Tessuti deadstock da negozi europei`,
+      'app.tagline': `Tessuti deadstock da tanti negozi`,
       'tab.search': `Cerca`, 'tab.favorites': `Preferiti`, 'tab.alerts': `Avvisi`, 'tab.more': `Altro`,
       'search.placeholder': `Cerca: seta, tweed, lino…`, 'search.clear': `Cancella`,
       'filters.open': `Filtri`, 'filters.title': `Filtri`, 'filters.reset': `Azzera filtri`,
@@ -255,10 +255,10 @@
       'alerts.pushSoon': `Le notifiche sul telefono arriveranno nella prossima versione. Per ora le nuove offerte vengono contate a ogni apertura dell’app.`,
       'alerts.checking': `Ricerca di nuove offerte…`,
       'more.title': `Altro`, 'more.language': `Lingua`, 'more.sources': `Negozi su Remna`,
-      'more.sourcesNote': (n) => `Remna cerca in ${n} negozi di tessuti deadstock in Europa. Le offerte vengono aggiornate più volte al giorno.`,
+      'more.sourcesNote': (n) => `Remna cerca in ${n} negozi di tessuti deadstock. Le offerte vengono aggiornate più volte al giorno.`,
       'more.offers': (n) => fmtCount(n, 'it'),
       'intro.title': `Benvenuto su Remna`,
-      'intro.lead': `I tessuti deadstock sono eccedenze di case di moda e tessiture: bei materiali in quantità limitate. Remna cerca per te nei negozi europei che li vendono.`,
+      'intro.lead': `I tessuti deadstock sono eccedenze di case di moda e tessiture: bei materiali in quantità limitate. Remna cerca per te nei negozi che li vendono.`,
       'intro.point1': `Cerca per materiale, composizione (es. 100% seta), colore, fantasia e prezzo al metro.`,
       'intro.point2': `Salva preferiti e avvisi per vedere cosa c’è di nuovo dalla tua ultima visita.`,
       'intro.point3': `Acquisti direttamente dal negozio. Remna non gestisce i pagamenti e non richiede un account.`,
@@ -284,7 +284,7 @@
       AT: 'Austria', IE: 'Irlanda' })));
 
     I.addDict('es', Object.assign({
-      'app.tagline': `Tejidos deadstock de tiendas europeas`,
+      'app.tagline': `Tejidos deadstock de muchas tiendas`,
       'tab.search': `Buscar`, 'tab.favorites': `Guardados`, 'tab.alerts': `Alertas`, 'tab.more': `Más`,
       'search.placeholder': `Buscar: seda, tweed, lino…`, 'search.clear': `Borrar`,
       'filters.open': `Filtros`, 'filters.title': `Filtros`, 'filters.reset': `Borrar filtros`,
@@ -347,10 +347,10 @@
       'alerts.pushSoon': `Las notificaciones en el móvil llegarán en la próxima versión. Por ahora, las ofertas nuevas se cuentan cada vez que abres la app.`,
       'alerts.checking': `Buscando ofertas nuevas…`,
       'more.title': `Más`, 'more.language': `Idioma`, 'more.sources': `Tiendas en Remna`,
-      'more.sourcesNote': (n) => `Remna busca en ${n} tiendas de tejidos deadstock de Europa. Las ofertas se actualizan varias veces al día.`,
+      'more.sourcesNote': (n) => `Remna busca en ${n} tiendas de tejidos deadstock. Las ofertas se actualizan varias veces al día.`,
       'more.offers': (n) => fmtCount(n, 'es'),
       'intro.title': `Bienvenido a Remna`,
-      'intro.lead': `Los tejidos deadstock son excedentes de casas de moda y fábricas textiles: materiales bonitos en cantidades limitadas. Remna busca por ti en las tiendas europeas que los venden.`,
+      'intro.lead': `Los tejidos deadstock son excedentes de casas de moda y fábricas textiles: materiales bonitos en cantidades limitadas. Remna busca por ti en las tiendas que los venden.`,
       'intro.point1': `Busca por material, composición (p. ej. 100 % seda), color, estampado y precio por metro.`,
       'intro.point2': `Guarda favoritos y alertas para ver qué hay de nuevo desde tu última visita.`,
       'intro.point3': `Compras directamente en la tienda. Remna no gestiona el pago ni necesita cuenta.`,
@@ -376,7 +376,7 @@
       AT: 'Austria', IE: 'Irlanda' })));
 
     I.addDict('nl', Object.assign({
-      'app.tagline': `Deadstock-stoffen uit Europese winkels`,
+      'app.tagline': `Deadstock-stoffen uit veel winkels`,
       'tab.search': `Zoeken`, 'tab.favorites': `Bewaard`, 'tab.alerts': `Meldingen`, 'tab.more': `Meer`,
       'search.placeholder': `Zoek: zijde, tweed, linnen…`, 'search.clear': `Wissen`,
       'filters.open': `Filters`, 'filters.title': `Filters`, 'filters.reset': `Filters wissen`,
@@ -439,10 +439,10 @@
       'alerts.pushSoon': `Pushmeldingen op je telefoon komen in de volgende versie. Tot dan worden nieuwe aanbiedingen geteld telkens als je de app opent.`,
       'alerts.checking': `Zoeken naar nieuwe aanbiedingen…`,
       'more.title': `Meer`, 'more.language': `Taal`, 'more.sources': `Winkels op Remna`,
-      'more.sourcesNote': (n) => `Remna doorzoekt ${n} winkels met deadstock-stoffen in Europa. De aanbiedingen worden meerdere keren per dag vernieuwd.`,
+      'more.sourcesNote': (n) => `Remna doorzoekt ${n} winkels met deadstock-stoffen. De aanbiedingen worden meerdere keren per dag vernieuwd.`,
       'more.offers': (n) => fmtCount(n, 'nl'),
       'intro.title': `Welkom bij Remna`,
-      'intro.lead': `Deadstock-stoffen zijn overschotten van modehuizen en weverijen: mooie materialen in beperkte hoeveelheden. Remna doorzoekt voor jou de Europese winkels die ze verkopen.`,
+      'intro.lead': `Deadstock-stoffen zijn overschotten van modehuizen en weverijen: mooie materialen in beperkte hoeveelheden. Remna doorzoekt voor jou de winkels die ze verkopen.`,
       'intro.point1': `Zoek op materiaal, samenstelling (bijv. 100% zijde), kleur, dessin en meterprijs.`,
       'intro.point2': `Bewaar favorieten en meldingen om te zien wat er nieuw is sinds je laatste bezoek.`,
       'intro.point3': `Je koopt rechtstreeks bij de winkel. Remna regelt geen betalingen en vraagt geen account.`,
