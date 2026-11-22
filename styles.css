@@ -62,6 +62,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .top {
   position: sticky; top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); z-index: 5; background: var(--bg);
   padding: 14px var(--gutter-r) 10px var(--gutter-l); display: grid; gap: 12px;
+  /* minmax(0, 1fr): bez tego pole wyszukiwania nie zwęża się i na wąskim telefonie (≤ ~400 px)
+     strona wystaje poza ekran, a telefon ją pomniejsza (dolne menu chowa się pod paskiem Androida) */
+  grid-template-columns: minmax(0, 1fr);
   border-bottom: 1px solid transparent; transition: border-color .2s;
 }
 .top.scrolled { border-bottom-color: var(--line); }
