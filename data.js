@@ -79,34 +79,50 @@
     }
 
     /**
-     * Przy wpisanym tekście i kolejności „najnowsze”: najpierw oferty ze słowem w nazwie, potem reszta.
-     * Dwie listy z bazy sklejone w jedną (strony liczone przez obie).
+     * Lista sklejona z kilku części (każda to osobne zapytanie, strony liczone przez wszystkie):
+     *  1) oferty, o których wiemy, że pasują do filtrów; 2) oferty, w których sklep nie podał części cech
+     *     (gramatury, składu…) — pokazujemy je, ale na końcu (pole _unknown na karcie);
+     *  w każdej z nich przy wpisanym tekście i kolejności „najnowsze”: najpierw słowo w nazwie, potem reszta.
+     * Liczniki części: „reszta” = całość − trafienia w nazwie (liczenie „nie w nazwie” byłoby wolne).
      */
-    async function searchTiered(filters, page) {
+    const tierCounts = new Map();
+    async function searchTiered(filters, page, key) {
       const n = R.normalizeFilters(filters);
-      const start = (page || 0) * R.PAGE_SIZE;
-      const base = (title, offset, limit, select) => R.restParams(filters, Object.assign({ page: 0, shopsByCountry }, title ? { title } : {}, select ? { select } : {}))
-        .filter(([k]) => k !== 'limit' && k !== 'offset')
-        .concat([['limit', String(limit)], ['offset', String(offset)]]);
-      const count = { Prefer: 'count=exact' };
-      // Liczba wszystkich trafień (szybki indeks wyszukiwania); „pozostałe” = wszystkie − trafienia w nazwie
-      // 416 = strona za końcem trafień w nazwie: pusta lista (liczba trafień jest w nagłówku)
-      const pageA = getJson('/products?' + R.toQueryString(base('only', start, R.PAGE_SIZE)), count)
-        .catch((e) => { if (e.status === 416) return { body: [], headers: e.headers }; throw e; });
-      const [a, all] = await Promise.all([
-        pageA,
-        getJson('/products?' + R.toQueryString(base(undefined, 0, 1, 'id')), count),
-      ]);
-      const totalA = parseTotal(a.headers);
-      const totalAll = parseTotal(all.headers);
-      const totalB = totalA != null && totalAll != null ? Math.max(0, totalAll - totalA) : null;
-      let items = a.body;
-      if (items.length < R.PAGE_SIZE && totalA != null && totalB) {
-        const need = R.PAGE_SIZE - items.length;
-        const b = await getJson('/products?' + R.toQueryString(base('exclude', Math.max(0, start - totalA), need)));
-        items = items.concat(b.body);
+      const knownTiers = R.unknownFields(n).length ? ['only', 'missing'] : [null];
+      const byTitle = !!(R.tsQuery(n.q) && n.sort === 'newest');
+      const params = (known, title, offset, limit, select) =>
+        R.restParams(filters, Object.assign({ page: 0, shopsByCountry }, known ? { known } : {}, title ? { title } : {}, select ? { select } : {}))
+          .filter(([k]) => k !== 'limit' && k !== 'offset')
+          .concat([['limit', String(limit)], ['offset', String(offset)]]);
+      const countOf = (known, title) => getJson('/products?' + R.toQueryString(params(known, title, 0, 1, 'id')), { Prefer: 'count=exact' })
+        .then((r) => parseTotal(r.headers));
+      const tiers = [];
+      for (const known of knownTiers) {
+        if (byTitle) { tiers.push({ known, title: 'only' }); tiers.push({ known, title: 'exclude' }); }
+        else tiers.push({ known, title: null });
       }
-      return { items, total: totalA != null && totalB != null ? totalA + totalB : null, approx: false, tiered: !!n.q };
+      let counts = page ? tierCounts.get(key) : null;
+      if (!counts) {
+        const raw = await Promise.all(knownTiers.flatMap((k) => byTitle ? [countOf(k, null), countOf(k, 'only')] : [countOf(k, null)]));
+        if (raw.some((c) => c == null)) { const e = new Error('no count'); e.status = 'count'; throw e; }
+        counts = [];
+        for (let i = 0; i < knownTiers.length; i++) {
+          if (byTitle) { const all = raw[2 * i], t = raw[2 * i + 1]; counts.push(t, Math.max(0, all - t)); }
+          else counts.push(raw[i]);
+        }
+        tierCounts.set(key, counts);
+      }
+      const total = counts.reduce((x, y) => x + y, 0);
+      const items = [];
+      let skip = (page || 0) * R.PAGE_SIZE;
+      for (let i = 0; i < tiers.length && items.length < R.PAGE_SIZE; i++) {
+        if (skip >= counts[i]) { skip -= counts[i]; continue; }
+        const need = Math.min(R.PAGE_SIZE - items.length, counts[i] - skip);
+        const { body } = await getJson('/products?' + R.toQueryString(params(tiers[i].known, tiers[i].title, skip, need)));
+        items.push(...body.map((p) => (tiers[i].known === 'missing' ? Object.assign(p, { _unknown: true }) : p)));
+        skip = 0;
+      }
+      return { items, total, approx: false, tiered: true, hasMore: (page || 0) * R.PAGE_SIZE + items.length < total };
     }
 
     // Którą kolejność wybrała pierwsza strona danego wyszukiwania (żeby dalsze strony jej nie zmieniały)
@@ -153,16 +169,17 @@
         }
       }
       const key = R.filtersKey(filters) + '|' + nf.sort;
-      const wantTiered = mode === 'live' && R.tsQuery(nf.q) && nf.sort === 'newest' && !since;
+      const wantTiered = mode === 'live' && !since &&
+        ((R.tsQuery(nf.q) && nf.sort === 'newest') || R.unknownFields(nf).length > 0);
       if (wantTiered && (!page || tieredFor.get(key) !== false)) {
         try {
-          const res = await searchTiered(filters, page);
+          const res = await searchTiered(filters, page, key);
           if (!page) tieredFor.set(key, true);
           return res;
         } catch (e) {
           if (!e.status) throw e;
           // Dalsze strony: jedna ponowna próba, bez zmiany kolejności w połowie listy (to dawało powtórki)
-          if (page) return await searchTiered(filters, page);
+          if (page) return await searchTiered(filters, page, key);
           tieredFor.set(key, false);   // pierwsza strona: zwykła kolejność niżej, także dla dalszych stron
         }
       }
@@ -179,10 +196,13 @@
         }
       }
       const all = demo.products.filter((p) => R.matchLocal(p, filters, { shopsByCountry, since }));
-      let sorted = R.sortLocal(all, nf.sort);
-      if (nf.q && nf.sort === 'newest') {
-        sorted = sorted.filter((p) => R.titleMatches(p, nf.q)).concat(sorted.filter((p) => !R.titleMatches(p, nf.q)));
-      }
+      const byTitle = (list) => (nf.q && nf.sort === 'newest'
+        ? list.filter((p) => R.titleMatches(p, nf.q)).concat(list.filter((p) => !R.titleMatches(p, nf.q))) : list);
+      // jak w bazie: najpierw pewne, potem oferty bez części cech (oznaczone _unknown)
+      const sortedAll = R.sortLocal(all, nf.sort);
+      const sure = sortedAll.filter((p) => R.matchLocal(p, filters, { shopsByCountry, since, known: 'only' }));
+      const rest = R.unknownFields(nf).length ? sortedAll.filter((p) => !sure.includes(p)).map((p) => Object.assign({}, p, { _unknown: true })) : [];
+      const sorted = byTitle(sure).concat(byTitle(rest));
       const start = (page || 0) * R.PAGE_SIZE;
       return { items: sorted.slice(start, start + R.PAGE_SIZE), total: sorted.length, approx: false };
     }

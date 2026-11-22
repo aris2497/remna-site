@@ -258,7 +258,9 @@
       $('#load-more').hidden = true;
       return;
     }
-    el.innerHTML = state.items.map((p) => cardHtml(p)).join('') + (state.loading ? skeletons(2) : '');
+    // przed pierwszą ofertą bez części wybranych cech: podpis (całą szerokością siatki)
+    el.innerHTML = state.items.map((p, i) => (p._unknown && !(i && state.items[i - 1]._unknown)
+      ? `<p class="unknown-divider">${esc(t('results.unknownDivider'))}</p>` : '') + cardHtml(p)).join('') + (state.loading ? skeletons(2) : '');
     $('#result-count').textContent = state.total == null ? '' : (state.approx ? t('results.countApprox', state.total) : t('results.count', state.total));
     $('#load-more').hidden = state.loading || !state.hasMore;
   }

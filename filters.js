@@ -294,6 +294,20 @@
     return new Date((now || Date.now()) - days * 86400000).toISOString();
   }
 
+  /** Kolumny filtrów, których wartości sklep może nie podać (null = nie wiadomo), dla aktywnych filtrów. */
+  function unknownFields(f) {
+    const n = normalizeFilters(f);
+    const out = [];
+    if (n.fibers.length) out.push(n.purity ? 'main_pct' : 'fibers');
+    if (n.noSynthetic) out.push('synthetic_pct');
+    if (n.minStock && !n.stockKnown) out.push('stock_m');
+    if (n.pattern) out.push('pattern');
+    if (n.weightMin != null || n.weightMax != null) out.push('weight_gsm');
+    if (n.maxPrice) out.push('price_per_m_eur');
+    if (n.minWidth) out.push('width_cm');
+    return Array.from(new Set(out));
+  }
+
   function restParams(f, opts) {
     const n = normalizeFilters(f);
     const o = Object.assign({ page: 0, now: Date.now(), shopsByCountry: {}, since: null, select: LIST_FIELDS }, opts || {});
@@ -303,27 +317,63 @@
     p.push(['available', 'eq.true']);   // „eq”, nie „is”: tak pasuje do częściowego indeksu products_live_idx
     if (n.kind === 'all') p.push(['kind', 'in.(fabric,leather)']);
     else p.push(['kind', 'eq.' + n.kind]);
+    // Każdy filtr cechy, której sklep może nie podać (skład, gramatura…), ma dwa warianty:
+    //  o.known = 'only'    → tylko oferty, o których WIEMY, że pasują (pierwsza część listy),
+    //  o.known = 'missing' → pasują albo nie wiadomo, i brakuje co najmniej jednej z tych cech (druga część),
+    //  bez o.known         → pasują albo nie wiadomo (całość: liczniki, alerty).
+    // Warunki „lub” trafiają do and=(or(...),or(...)), żeby kilka naraz się nie nadpisywało.
+    const strict = o.known === 'only';
+    const ors = [];
+    const fiberSet = '{' + n.fibers.join(',') + '}';
     if (n.fibers.length && n.purity) {
       // Włókno z udziałem ≥ 50% jest zawsze włóknem głównym, więc wystarczą main_fiber i main_pct.
-      p.push(['main_fiber', 'in.(' + n.fibers.join(',') + ')']);
-      p.push(['main_pct', 'gte.' + n.purity]);
-    } else if (n.fibers.length) p.push(['fibers', 'ov.{' + n.fibers.join(',') + '}']);
-    if (n.noSynthetic) p.push(['synthetic_pct', 'lte.' + MAX_SYNTHETIC_PCT]);
-    // Warunki „lub” (oferty z nieznaną wartością zostają); kilka naraz łączymy w and=(or(...),or(...))
-    const ors = [];
+      if (strict) {
+        p.push(['main_fiber', 'in.(' + n.fibers.join(',') + ')']);
+        p.push(['main_pct', 'gte.' + n.purity]);
+      } else {
+        ors.push('and(main_fiber.in.(' + n.fibers.join(',') + '),main_pct.gte.' + n.purity + '),' +
+          'and(main_pct.is.null,or(fibers.is.null,fibers.ov.' + fiberSet + '))');
+      }
+    } else if (n.fibers.length) {
+      if (strict) p.push(['fibers', 'ov.' + fiberSet]);
+      else ors.push('fibers.is.null,fibers.ov.' + fiberSet);
+    }
+    if (n.noSynthetic) {
+      if (strict) p.push(['synthetic_pct', 'lte.' + MAX_SYNTHETIC_PCT]);
+      else ors.push('synthetic_pct.is.null,synthetic_pct.lte.' + MAX_SYNTHETIC_PCT);
+    }
     if (n.stockKnown) p.push(['stock_m', 'gte.' + (n.minStock || 0.01)]);
-    else if (n.minStock) ors.push('stock_m.is.null,stock_m.gte.' + n.minStock);
+    else if (n.minStock) {
+      if (strict) p.push(['stock_m', 'gte.' + n.minStock]);
+      else ors.push('stock_m.is.null,stock_m.gte.' + n.minStock);
+    }
     if (n.colors.length) p.push(['colors', 'ov.{' + colorsWithNear(n.colors).join(',') + '}']);
-    // wzór: oferty z nierozpoznanym wzorem (null) pokazujemy zawsze, ukrywamy tylko ten przeciwny
-    if (n.pattern) ors.push('pattern.is.null,pattern.eq.' + n.pattern);
+    if (n.pattern) {
+      if (strict) p.push(['pattern', 'eq.' + n.pattern]);
+      else ors.push('pattern.is.null,pattern.eq.' + n.pattern);
+    }
+    if (n.weightMin != null || n.weightMax != null) {
+      const lo = n.weightMin != null ? 'weight_gsm.gte.' + n.weightMin : 'weight_gsm.gt.0';
+      const hi = n.weightMax != null ? 'weight_gsm.lt.' + n.weightMax : null;
+      if (strict) {
+        p.push(['weight_gsm', lo.slice('weight_gsm.'.length)]);
+        if (hi) p.push(['weight_gsm', hi.slice('weight_gsm.'.length)]);
+      } else ors.push('weight_gsm.is.null,' + (hi ? 'and(' + lo + ',' + hi + ')' : lo));
+    }
+    if (n.maxPrice) {
+      if (strict) p.push(['price_per_m_eur', 'lte.' + n.maxPrice]);
+      else ors.push('price_per_m_eur.is.null,price_per_m_eur.lte.' + n.maxPrice);
+    }
+    if (n.minWidth) {
+      if (strict) p.push(['width_cm', 'gte.' + n.minWidth]);
+      else ors.push('width_cm.is.null,width_cm.gte.' + n.minWidth);
+    }
+    if (o.known === 'missing') {
+      const miss = unknownFields(n);
+      if (miss.length) ors.push(miss.map((c) => c + '.is.null').join(','));
+    }
     if (ors.length === 1) p.push(['or', '(' + ors[0] + ')']);
     else if (ors.length) p.push(['and', '(' + ors.map((x) => 'or(' + x + ')').join(',') + ')']);
-    if (n.weightMin != null || n.weightMax != null) {
-      p.push(['weight_gsm', n.weightMin != null ? 'gte.' + n.weightMin : 'gt.0']);
-      if (n.weightMax != null) p.push(['weight_gsm', 'lt.' + n.weightMax]);
-    }
-    if (n.maxPrice) p.push(['price_per_m_eur', 'lte.' + n.maxPrice]);
-    if (n.minWidth) p.push(['width_cm', 'gte.' + n.minWidth]);
     const shopIds = allowedShops(n, o.shopsByCountry);
     if (shopIds) p.push(['shop_id', 'in.(' + shopIds.join(',') + ')']);
     const since = o.since || (n.newDays ? sinceIso(n.newDays, o.now) : null);
@@ -393,21 +443,48 @@
     const o = Object.assign({ now: Date.now(), shopsByCountry: {}, since: null }, opts || {});
     if (p.removed_at || !p.available) return false;
     if (n.kind === 'all' ? !['fabric', 'leather'].includes(p.kind) : p.kind !== n.kind) return false;
-    if (n.fibers.length && !(p.fibers || []).some((x) => n.fibers.includes(x))) return false;
+    // Nieznana wartość (sklep nie podał) nie wyklucza oferty; opts.known: 'only' = tylko pewne, 'missing' = tylko z brakami
+    let unknown = false;
+    const fibers = p.fibers && p.fibers.length ? p.fibers : null;
     const comp = p.composition && Object.keys(p.composition).length ? p.composition : null;
-    if (n.purity && !(comp && n.fibers.some((x) => (comp[x] || 0) >= n.purity))) return false;
-    if (n.noSynthetic && !(comp && syntheticShare(comp) <= MAX_SYNTHETIC_PCT)) return false;
+    if (n.fibers.length && n.purity) {
+      if (comp) { if (!n.fibers.some((x) => (comp[x] || 0) >= n.purity)) return false; }
+      else if (fibers && !fibers.some((x) => n.fibers.includes(x))) return false;
+      else unknown = true;
+    } else if (n.fibers.length) {
+      if (!fibers) unknown = true;
+      else if (!fibers.some((x) => n.fibers.includes(x))) return false;
+    }
+    if (n.noSynthetic) {
+      if (!comp) unknown = true;
+      else if (syntheticShare(comp) > MAX_SYNTHETIC_PCT) return false;
+    }
     const stock = p.stock_m == null ? null : Number(p.stock_m);
-    if (n.stockKnown && stock == null) return false;
-    if (n.minStock && stock != null && stock < n.minStock) return false;
+    if (n.stockKnown && !(stock != null && stock >= (n.minStock || 0.01))) return false;
+    if (n.minStock && !n.stockKnown) {
+      if (stock == null) unknown = true;
+      else if (stock < n.minStock) return false;
+    }
     if (n.colors.length && !(p.colors || []).some((x) => colorsWithNear(n.colors).includes(x))) return false;
-    if (n.pattern && p.pattern && p.pattern !== n.pattern) return false;
+    if (n.pattern) {
+      if (!p.pattern) unknown = true;
+      else if (p.pattern !== n.pattern) return false;
+    }
     if (n.weightMin != null || n.weightMax != null) {
       const g = p.weight_gsm == null ? null : Number(p.weight_gsm);
-      if (g == null || !(g > 0) || (n.weightMin != null && g < n.weightMin) || (n.weightMax != null && g >= n.weightMax)) return false;
+      if (g == null) unknown = true;
+      else if (!(g > 0) || (n.weightMin != null && g < n.weightMin) || (n.weightMax != null && g >= n.weightMax)) return false;
     }
-    if (n.maxPrice && !(p.price_per_m_eur != null && p.price_per_m_eur <= n.maxPrice)) return false;
-    if (n.minWidth && !(p.width_cm != null && p.width_cm >= n.minWidth)) return false;
+    if (n.maxPrice) {
+      if (p.price_per_m_eur == null) unknown = true;
+      else if (p.price_per_m_eur > n.maxPrice) return false;
+    }
+    if (n.minWidth) {
+      if (p.width_cm == null) unknown = true;
+      else if (p.width_cm < n.minWidth) return false;
+    }
+    if (o.known === 'only' && unknown) return false;
+    if (o.known === 'missing' && !unknown) return false;
     const shopIds = allowedShops(n, o.shopsByCountry);
     if (shopIds && !shopIds.includes(p.shop_id)) return false;
     const since = o.since || (n.newDays ? sinceIso(n.newDays, o.now) : null);
@@ -681,7 +758,7 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    restParams, unknownFields, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

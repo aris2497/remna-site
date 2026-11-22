@@ -401,3 +401,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
 .country-head[aria-pressed="true"] .tick::after {
   content: ""; width: 5px; height: 9px; border: solid var(--accent-ink); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg);
 }
+
+/* Podpis przed ofertami, w których sklep nie podał części filtrowanych cech */
+.unknown-divider {
+  grid-column: 1 / -1; margin: 12px 0 2px; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface); border: 1px dashed var(--line); color: var(--muted); font-size: 13px; line-height: 1.45;
+}
