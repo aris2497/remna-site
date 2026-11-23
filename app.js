@@ -795,10 +795,11 @@
     $('#stats-note').textContent = dnt ? t('more.statsDnt') : t('more.statsText');
     $('#version').textContent = t('more.version', cfg.version) + (source.updatedAt ? ' · ' + t('more.updated', fmtDate(source.updatedAt)) : '');
   }
-  $('#privacy-link').addEventListener('click', (e) => {
+  // linki do stron poza aplikacją (polityka, przewodnik): w Androidzie otwieramy je w przeglądarce
+  document.querySelectorAll('#privacy-link, .ext-link').forEach((a) => a.addEventListener('click', (e) => {
     e.preventDefault();
     N.openExternal(e.currentTarget.href);
-  });
+  }));
   $('#stats-toggle').addEventListener('change', (e) => {
     storage.setItem('remna-statystyki', e.target.checked ? 'tak' : 'nie');
   });
