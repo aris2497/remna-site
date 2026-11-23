@@ -256,6 +256,50 @@
       .map(aliasWord);
   }
 
+  /** Słowa z wyszukiwarki, które są kolorem albo materiałem (w 7 językach i polskich odmianach), zamieniamy na filtry:
+   *  „red silk” = kolor Czerwony + materiał Jedwab (filtry sprawdzają skład i kolor wariantu, a nie słowo w nazwie).
+   *  final = false (w trakcie pisania): ostatnie słowo zostaje, dopóki nie postawisz po nim spacji. */
+  const LANGS = ['pl', 'en', 'de', 'fr', 'it', 'es', 'nl'];
+  const _plain = (w) => w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+  const FILTER_WORDS = (() => {
+    const map = {};
+    const add = (word, kind, id) => {
+      const k = String(word || '').toLowerCase();
+      if (k.length < 3) return;   // „or” (fr. złoty) to też angielskie „lub”
+      map[k] = map[k] || [kind, id];
+      map[_plain(k)] = map[_plain(k)] || [kind, id];
+    };
+    COLORS.forEach((c) => { add(c.id, 'colors', c.id); LANGS.forEach((l) => add(c[l], 'colors', c.id)); });
+    FIBERS.filter((f) => f.id !== 'leather').forEach((f) => { add(f.id, 'fibers', f.id); LANGS.forEach((l) => add(f[l], 'fibers', f.id)); });
+    return map;
+  })();
+  function filterWord(word) {
+    const k = String(word || '').toLowerCase().replace(/[^\p{L}]/gu, '');
+    if (k.length < 3) return null;
+    if (FILTER_WORDS[k]) return FILTER_WORDS[k];
+    if (FILTER_WORDS[_plain(k)]) return FILTER_WORDS[_plain(k)];
+    const a = aliasWord(k);   // odmiany: „czerwona”, „jedwabny”, „wełniany”…
+    return a !== k && FILTER_WORDS[a] ? FILTER_WORDS[a] : null;
+  }
+  function extractFilters(text, final) {
+    const raw = String(text || '');
+    const words = raw.split(/\s+/).filter(Boolean);
+    const keepLast = !final && words.length && !/\s$/.test(raw);
+    const out = { q: '', colors: [], fibers: [] };
+    const rest = [];
+    words.forEach((w, i) => {
+      const hit = keepLast && i === words.length - 1 ? null : filterWord(w);
+      if (hit) { if (!out[hit[0]].includes(hit[1])) out[hit[0]].push(hit[1]); } else rest.push(w);
+    });
+    // spójniki („silk or wool”, „jedwab lub wełna”) nie mają sensu jako tekst, gdy słowa obok stały się filtrami
+    const STOP = ['or', 'and', 'lub', 'albo', 'oraz', 'und', 'oder', 'et', 'ou', 'and', 'en', 'of', 'y', 'o', 'e', 'i', 'w', 'in', 'z', 'with'];
+    const found = out.colors.length + out.fibers.length > 0;
+    const kept = found ? rest.filter((w, i) => !(STOP.includes(w.toLowerCase()) && !(keepLast && i === rest.length - 1))) : rest;
+    out.q = kept.join(' ');
+    if (!final && /\s$/.test(raw) && kept.length) out.q += ' ';
+    return out;
+  }
+
   /** Czy szukane słowa są w nazwie oferty (do kolejności „najpierw trafienia w nazwie”). */
   function titleMatches(p, q) {
     const words = searchWords(q);
@@ -780,7 +824,7 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, unknownFields, pickImage, shopUrl, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    restParams, unknownFields, pickImage, shopUrl, extractFilters, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

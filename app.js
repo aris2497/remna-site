@@ -147,16 +147,29 @@
   let qTimer = null;
   $('#q').value = state.filters.q;
   $('#q-clear').hidden = !state.filters.q;
+  /** Tekst z wyszukiwarki → filtry: kolory i materiały („red silk”) stają się filtrami, reszta zostaje tekstem. */
+  function filtersFromSearchBox(final) {
+    const x = R.extractFilters($('#q').value, final);
+    const f = Object.assign({}, state.filters, { q: x.q.trim() });
+    if (x.colors.length || x.fibers.length) {
+      f.colors = [...new Set(state.filters.colors.concat(x.colors))];
+      f.fibers = [...new Set(state.filters.fibers.concat(x.fibers))];
+      if (x.fibers.length && f.kind === 'leather') f.kind = 'all';
+      $('#q').value = x.q;   // rozpoznane słowa znikają z pola (widać je jako zaznaczone filtry)
+      $('#q-clear').hidden = !x.q;
+    }
+    return f;
+  }
   $('#q').addEventListener('input', () => {
     $('#q-clear').hidden = !$('#q').value;
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => setFilters(Object.assign({}, state.filters, { q: $('#q').value })), 350);
+    qTimer = setTimeout(() => setFilters(filtersFromSearchBox(false)), 350);
   });
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
     clearTimeout(qTimer);
     $('#q').blur();
-    setFilters(Object.assign({}, state.filters, { q: $('#q').value }));
+    setFilters(filtersFromSearchBox(true));
   });
   $('#q-clear').addEventListener('click', () => {
     $('#q').value = '';
