@@ -471,12 +471,37 @@
   function chip(attr, value, label, pressed, extra, disabled) {
     return `<button type="button" class="chip" data-${attr}="${esc(value)}" aria-pressed="${pressed}"${disabled ? ' disabled' : ''}>${extra || ''}${esc(label)}</button>`;
   }
-  /** Nagłówek grupy z przyciskiem „Zaznacz wszystkie” / „Odznacz wszystkie”. */
-  function groupHead(titleKey, field, ids, selected) {
-    const all = ids.length > 0 && ids.every((id) => selected.includes(id));
-    return `<div class="fgroup-head"><h3>${esc(t(titleKey))}</h3>` +
-      `<button type="button" class="text-btn small" data-selectall="${field}" data-ids="${esc(ids.join(','))}" data-on="${all ? '0' : '1'}">` +
-      `${esc(t(all ? 'filters.selectNone' : 'filters.selectAll'))}</button></div>`;
+  // Arkusz filtrów: najczęściej używane filtry na górze, objaśnienia schowane pod (i), długie listy skrócone („+ N więcej”).
+  const FIBER_TOP = ['silk', 'wool', 'linen', 'cotton', 'viscose', 'cashmere', 'polyester'];
+  const COLOR_TOP = ['black', 'white', 'cream', 'beige', 'grey', 'blue', 'green', 'red'];
+  const openInfo = new Set();     // grupy z rozwiniętym objaśnieniem
+  const expanded = new Set();     // grupy z rozwiniętą pełną listą
+  const INFO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></svg>';
+  /** Nagłówek grupy: tytuł, opcjonalnie (i) z objaśnieniem i „Zaznacz wszystkie”; pod nim objaśnienie, gdy rozwinięte. */
+  function groupHead(titleKey, opts = {}) {
+    const id = opts.id || titleKey;
+    const open = openInfo.has(id);
+    const info = opts.info ? `<button type="button" class="info-btn" data-info="${esc(id)}" aria-expanded="${open}" aria-label="${esc(t('filters.about'))}">${INFO_ICON}</button>` : '';
+    let sel = '';
+    if (opts.selectAll) {
+      const { field, ids, selected } = opts.selectAll;
+      const all = ids.length > 0 && ids.every((x) => selected.includes(x));
+      sel = `<button type="button" class="text-btn small" data-selectall="${field}" data-ids="${esc(ids.join(','))}" data-on="${all ? '0' : '1'}">` +
+        `${esc(t(all ? 'filters.selectNone' : 'filters.selectAll'))}</button>`;
+    }
+    return `<div class="fgroup-head"><div class="fgroup-title"><h3>${esc(t(titleKey))}</h3>${info}</div>${sel}</div>` +
+      (opts.info && open ? `<p class="hint">${esc(opts.info)}</p>` : '');
+  }
+  /** Lista z najczęstszymi pozycjami na początku; reszta po „+ N więcej” (zaznaczone są zawsze widoczne). */
+  function shortList(id, items, top, isOn, render) {
+    const isOpen = expanded.has(id);
+    const first = top.map((k) => items.find((x) => x.id === k)).filter(Boolean);
+    const rest = items.filter((x) => !top.includes(x.id));
+    const shown = isOpen ? first.concat(rest) : first.concat(rest.filter(isOn));
+    const hidden = rest.length - rest.filter(isOn).length;
+    const more = isOpen ? `<button type="button" class="chip more-chip" data-expand="${id}">${esc(t('filters.less'))}</button>`
+      : hidden > 0 ? `<button type="button" class="chip more-chip" data-expand="${id}">${esc(t('filters.moreN', hidden))}</button>` : '';
+    return shown.map(render).join('') + more;
   }
 
   // Suwak gramatury: przesuwanie nie przerysowuje arkusza (żeby nie zgubić uchwytu), tylko podpis i wypełnienie
@@ -507,34 +532,34 @@
 
   function renderFilterSheet() {
     const f = state.draft;
+    const lang = I.getLang();
     const countries = Object.keys(source.shopsByCountry).sort((a, b) => countryName(a).localeCompare(countryName(b)));
     const html = [];
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.kind'))}</h3><div class="chips">` +
+    html.push(`<div class="fgroup">${groupHead('filters.kind')}<div class="chips">` +
       ['all', 'fabric', 'leather'].map((k) => chip('kind', k, t('filters.kind.' + k), f.kind === k)).join('') + '</div></div>');
-    const fiberIds = R.FIBERS.filter((x) => x.id !== 'leather').map((x) => x.id);
-    html.push(`<div class="fgroup">${groupHead('filters.fibers', 'fibers', fiberIds, f.fibers)}<div class="chips">` +
-      R.FIBERS.filter((x) => x.id !== 'leather').map((x) => chip('fiber', x.id, x[I.getLang()] || x.en, f.fibers.includes(x.id))).join('') + '</div></div>');
-    // Skład: udział wybranego materiału i „bez syntetyków”
-    const purityOff = !f.fibers.length;
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.composition'))}</h3>` +
-      `<p class="hint">${esc(purityOff ? t('filters.purityPick') : t('filters.purityLead'))}</p>` +
-      `<div class="chips${purityOff ? ' disabled' : ''}">` +
-      chip('purity', '', t('filters.purityAny'), !f.purity, '', purityOff) +
-      R.PURITY_STEPS.map((v) => chip('purity', v, v === 100 ? t('filters.purity100') : t('filters.purityMin', v), f.purity === v, '', purityOff)).join('') +
-      `</div><div class="chips">` + chip('nosynth', '1', t('filters.noSynthetic'), f.noSynthetic) +
-      `</div><p class="hint">${esc(t('filters.compositionNote'))}</p></div>`);
-    // Ile metrów potrzebujesz
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.minStock'))}</h3><div class="chips">` +
-      chip('stock', '', t('filters.any'), !f.minStock) +
-      R.MIN_STOCK_STEPS.map((v) => chip('stock', v, t('filters.fromStock', v), f.minStock === v)).join('') +
-      `</div><div class="chips">` + chip('stockknown', '1', t('filters.stockKnown'), f.stockKnown) +
-      `</div><p class="hint">${esc(t('filters.stockNote'))}</p></div>`);
+    // Materiał
+    const fibers = R.FIBERS.filter((x) => x.id !== 'leather');
+    html.push(`<div class="fgroup">${groupHead('filters.fibers', { selectAll: { field: 'fibers', ids: fibers.map((x) => x.id), selected: f.fibers } })}<div class="chips">` +
+      shortList('fibers', fibers, FIBER_TOP, (x) => f.fibers.includes(x.id), (x) => chip('fiber', x.id, x[lang] || x.en, f.fibers.includes(x.id))) + '</div></div>');
+    // Kolor
+    html.push(`<div class="fgroup">${groupHead('filters.colors', { info: t('filters.colorsNote'), selectAll: { field: 'colors', ids: R.COLORS.map((c) => c.id), selected: f.colors } })}<div class="chips">` +
+      shortList('colors', R.COLORS, COLOR_TOP, (c) => f.colors.includes(c.id),
+        (c) => chip('color', c.id, c[lang] || c.en, f.colors.includes(c.id), `<span class="dot" style="background:${c.hex}"></span>`)) + '</div></div>');
+    // Cena za metr
+    html.push(`<div class="fgroup">${groupHead('filters.maxPrice', { info: t('filters.priceNote') })}<div class="chips">` +
+      chip('price', '', t('filters.any'), !f.maxPrice) +
+      R.MAX_PRICE_STEPS.map((v) => chip('price', v, t('filters.upTo', v), f.maxPrice === v)).join('') + '</div></div>');
+    // Wzór: jednolite / wzorzyste
+    html.push(`<div class="fgroup">${groupHead('filters.pattern', { info: t('filters.patternNote') })}<div class="chips">` +
+      chip('pattern', '', t('filters.patternAny'), !f.pattern) +
+      chip('pattern', 'plain', t('filters.patternPlain'), f.pattern === 'plain') +
+      chip('pattern', 'patterned', t('filters.patternPatterned'), f.pattern === 'patterned') + '</div></div>');
     // Gramatura (g/m²): gotowe przedziały albo własny zakres suwakiem
     const wSet = f.weightMin != null || f.weightMax != null;
     const wPreset = R.weightPreset(f.weightMin, f.weightMax);
     const wCustom = weightCustomOpen || (wSet && !wPreset);
     const W_MAX = R.WEIGHT_SLIDER_MAX;
-    html.push(`<div class="fgroup" id="weight-group"><h3>${esc(t('filters.weight'))}</h3><div class="chips">` +
+    html.push(`<div class="fgroup" id="weight-group">${groupHead('filters.weight', { info: t('filters.weightNote') })}<div class="chips">` +
       chip('weight', '', t('filters.any'), !wSet && !weightCustomOpen) +
       Object.keys(R.WEIGHT_RANGES).map((k) => chip('weight', k, t('filters.weight.' + k), !wCustom && wPreset === k)).join('') +
       chip('weight', 'custom', t('filters.weight.custom'), wCustom) +
@@ -547,25 +572,26 @@
           <input type="range" id="weight-max" min="0" max="${W_MAX}" step="${R.WEIGHT_STEP}" value="${f.weightMax == null ? W_MAX : f.weightMax}" aria-label="${esc(t('filters.weightMaxAria'))}">
         </div>
         <div class="wrange-scale"><span>0</span><span>200</span><span>400</span><span>${W_MAX}+</span></div>
-      </div>` : '') +
-      `<p class="hint">${esc(t('filters.weightNote'))}</p></div>`);
-    // Wzór: jednolite / wzorzyste
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.pattern'))}</h3><div class="chips">` +
-      chip('pattern', '', t('filters.patternAny'), !f.pattern) +
-      chip('pattern', 'plain', t('filters.patternPlain'), f.pattern === 'plain') +
-      chip('pattern', 'patterned', t('filters.patternPatterned'), f.pattern === 'patterned') +
-      `</div><p class="hint">${esc(t('filters.patternNote'))}</p></div>`);
-    html.push(`<div class="fgroup">${groupHead('filters.colors', 'colors', R.COLORS.map((c) => c.id), f.colors)}<div class="chips">` +
-      R.COLORS.map((c) => chip('color', c.id, c[I.getLang()] || c.en, f.colors.includes(c.id), `<span class="dot" style="background:${c.hex}"></span>`)).join('') +
-      `</div><p class="hint">${esc(t('filters.colorsNote'))}</p></div>`);
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.maxPrice'))}</h3><div class="chips">` +
-      chip('price', '', t('filters.any'), !f.maxPrice) +
-      R.MAX_PRICE_STEPS.map((v) => chip('price', v, t('filters.upTo', v), f.maxPrice === v)).join('') +
-      `</div><p class="hint">${esc(t('filters.priceNote'))}</p></div>`);
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.minWidth'))}</h3><div class="chips">` +
+      </div>` : '') + '</div>');
+    // Szerokość
+    html.push(`<div class="fgroup">${groupHead('filters.minWidth')}<div class="chips">` +
       chip('width', '', t('filters.anyWidth'), !f.minWidth) +
       R.MIN_WIDTH_STEPS.map((v) => chip('width', v, t('filters.fromWidth', v), f.minWidth === v)).join('') + '</div></div>');
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.newDays'))}</h3><div class="chips">` +
+    // Skład: udział wybranego materiału i „bez syntetyków” (bez materiału: krótka wskazówka zostaje widoczna)
+    const purityOff = !f.fibers.length;
+    html.push(`<div class="fgroup">${groupHead('filters.composition', { info: t('filters.compositionNote') })}` +
+      (purityOff ? `<p class="hint">${esc(t('filters.purityPick'))}</p>` : '') +
+      `<div class="chips${purityOff ? ' disabled' : ''}">` +
+      chip('purity', '', t('filters.purityAny'), !f.purity, '', purityOff) +
+      R.PURITY_STEPS.map((v) => chip('purity', v, v === 100 ? t('filters.purity100') : t('filters.purityMin', v), f.purity === v, '', purityOff)).join('') +
+      `</div><div class="chips">` + chip('nosynth', '1', t('filters.noSynthetic'), f.noSynthetic) + '</div></div>');
+    // Ile metrów potrzebujesz
+    html.push(`<div class="fgroup">${groupHead('filters.minStock', { info: t('filters.stockNote') })}<div class="chips">` +
+      chip('stock', '', t('filters.any'), !f.minStock) +
+      R.MIN_STOCK_STEPS.map((v) => chip('stock', v, t('filters.fromStock', v), f.minStock === v)).join('') +
+      `</div><div class="chips">` + chip('stockknown', '1', t('filters.stockKnown'), f.stockKnown) + '</div></div>');
+    // Nowości
+    html.push(`<div class="fgroup">${groupHead('filters.newDays')}<div class="chips">` +
       chip('new', '', t('filters.newAny'), !f.newDays) +
       [1, 7, 30].map((d) => chip('new', d, t('filters.new' + d), f.newDays === d)).join('') + '</div></div>');
     // Sklepy pogrupowane według krajów: kraj = wszystkie jego sklepy (także przyszłe), wybory się sumują
@@ -575,13 +601,18 @@
     const loose = source.shops.filter((s) => !grouped.has(s.id)).map((s) => s.id);
     const shopChips = (ids, whole) => ids.slice().sort((a, b) => (shopName[a] || a).localeCompare(shopName[b] || b))
       .map((id) => chip('shop', id, shopName[id] || id, whole || f.shops.includes(id))).join('');
-    html.push(`<div class="fgroup"><h3>${esc(t('filters.shops'))}</h3>` +
+    html.push(`<div class="fgroup">${groupHead('filters.shops')}` +
       `<div class="chips">${chip('shop', '', t('filters.anyShop'), !f.countries.length && !f.shops.length)}</div>` +
       countries.map((c) => {
         const on = f.countries.includes(c);
-        return `<div class="shop-country"><button type="button" class="country-head" data-country="${esc(c)}" aria-pressed="${on}">` +
+        const ids = byCountry[c] || [];
+        // nazwy sklepów schowane, dopóki ktoś ich nie rozwinie (albo nie wybrał pojedynczego sklepu z tego kraju)
+        const open = expanded.has('country:' + c) || ids.some((id) => f.shops.includes(id));
+        return `<div class="shop-country"><div class="country-row"><button type="button" class="country-head" data-country="${esc(c)}" aria-pressed="${on}">` +
           `<span class="tick" aria-hidden="true"></span>${esc(countryName(c))}</button>` +
-          `<div class="chips">${shopChips(byCountry[c] || [], on)}</div></div>`;
+          `<button type="button" class="text-btn small" data-expand="country:${esc(c)}" aria-expanded="${open}">` +
+          `${esc(open ? t('filters.less') : t('filters.showShops', ids.length))}</button></div>` +
+          (open ? `<div class="chips">${shopChips(ids, on)}</div>` : '') + '</div>';
       }).join('') +
       (loose.length ? `<div class="chips">${shopChips(loose, false)}</div>` : '') +
       '</div>');
@@ -612,6 +643,17 @@
       const y0 = $('#filters-body').scrollTop;
       renderFilterSheet();
       $('#filters-body').scrollTop = y0;
+      return;
+    }
+    const ib = e.target.closest('[data-info]');
+    const xb = e.target.closest('[data-expand]');
+    if (ib || xb) {
+      const [set, key] = ib ? [openInfo, ib.dataset.info] : [expanded, xb.dataset.expand];
+      if (set.has(key)) set.delete(key); else set.add(key);
+      const y2 = $('#filters-body').scrollTop;
+      renderFilterSheet();
+      $('#filters-body').scrollTop = y2;
+      if (ib) { const nb = $('#filters-body').querySelector(`[data-info="${key}"]`); if (nb) nb.focus(); }
       return;
     }
     const ch = e.target.closest('.country-head');

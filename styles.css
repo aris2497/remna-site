@@ -291,6 +291,15 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
 /* --- Nagłówek grupy filtrów z „Zaznacz wszystkie” --- */
 .fgroup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
 .fgroup-head h3 { margin: 0; }
+.fgroup-title { display: flex; align-items: center; gap: 4px; }
+.info-btn {
+  border: 0; background: transparent; color: var(--muted); width: 28px; height: 28px; margin: -6px 0; padding: 0;
+  display: inline-grid; place-items: center; border-radius: 50%; cursor: pointer;
+}
+.info-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.info-btn[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
+.fgroup-head + .hint { margin: -4px 0 10px; }
+.chip.more-chip { border-style: dashed; color: var(--muted); background: transparent; }
 .text-btn.small { font-size: 13.5px; padding: 4px 0; }
 
 /* --- Więcej: wyłącznik statystyk, przycisk uwag --- */
@@ -394,7 +403,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
 }
 
 /* Sklepy pogrupowane według krajów (kliknięcie kraju zaznacza wszystkie jego sklepy) */
-.shop-country { margin-top: 12px; }
+.shop-country { margin-top: 6px; }
+.country-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.country-row .country-head { margin: 0; }
+.shop-country .chips { margin: 4px 0 8px; }
 .country-head {
   display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 4px 0; margin: 0 0 6px;
   font: inherit; font-size: 14px; font-weight: 650; color: var(--ink); cursor: pointer;
