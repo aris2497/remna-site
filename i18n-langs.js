@@ -8,7 +8,7 @@
     const countries = (names) => Object.fromEntries(Object.entries(names).map(([k, v]) => ['country.' + k, v]));
 
     I.addDict('de', Object.assign({
-      'app.tagline': `Deadstock-Stoffe aus vielen Shops`,
+      'app.tagline': `Deadstock-Stoffe aus ganz Europa an einem Ort`,
       'tab.search': `Suchen`, 'tab.favorites': `Gemerkt`, 'tab.alerts': `Alarme`, 'tab.more': `Mehr`,
       'search.placeholder': `Suche: Seide, Tweed, Leinen…`, 'search.clear': `Löschen`,
       'filters.open': `Filter`, 'filters.title': `Filter`, 'filters.reset': `Filter zurücksetzen`,
@@ -104,7 +104,7 @@
       AT: 'Österreich', IE: 'Irland' })));
 
     I.addDict('fr', Object.assign({
-      'app.tagline': `Tissus deadstock de nombreuses boutiques`,
+      'app.tagline': `Les tissus deadstock d'Europe en une recherche`,
       'tab.search': `Rechercher`, 'tab.favorites': `Favoris`, 'tab.alerts': `Alertes`, 'tab.more': `Plus`,
       'search.placeholder': `Rechercher : soie, tweed, lin…`, 'search.clear': `Effacer`,
       'filters.open': `Filtres`, 'filters.title': `Filtres`, 'filters.reset': `Effacer les filtres`,
@@ -200,7 +200,7 @@
       AT: 'Autriche', IE: 'Irlande' })));
 
     I.addDict('it', Object.assign({
-      'app.tagline': `Tessuti deadstock da tanti negozi`,
+      'app.tagline': `I tessuti deadstock d'Europa in un'unica ricerca`,
       'tab.search': `Cerca`, 'tab.favorites': `Preferiti`, 'tab.alerts': `Avvisi`, 'tab.more': `Altro`,
       'search.placeholder': `Cerca: seta, tweed, lino…`, 'search.clear': `Cancella`,
       'filters.open': `Filtri`, 'filters.title': `Filtri`, 'filters.reset': `Azzera filtri`,
@@ -296,7 +296,7 @@
       AT: 'Austria', IE: 'Irlanda' })));
 
     I.addDict('es', Object.assign({
-      'app.tagline': `Tejidos deadstock de muchas tiendas`,
+      'app.tagline': `Los tejidos deadstock de Europa en una búsqueda`,
       'tab.search': `Buscar`, 'tab.favorites': `Guardados`, 'tab.alerts': `Alertas`, 'tab.more': `Más`,
       'search.placeholder': `Buscar: seda, tweed, lino…`, 'search.clear': `Borrar`,
       'filters.open': `Filtros`, 'filters.title': `Filtros`, 'filters.reset': `Borrar filtros`,
@@ -392,7 +392,7 @@
       AT: 'Austria', IE: 'Irlanda' })));
 
     I.addDict('nl', Object.assign({
-      'app.tagline': `Deadstock-stoffen uit veel winkels`,
+      'app.tagline': `Deadstock-stoffen uit heel Europa op één plek`,
       'tab.search': `Zoeken`, 'tab.favorites': `Bewaard`, 'tab.alerts': `Meldingen`, 'tab.more': `Meer`,
       'search.placeholder': `Zoek: zijde, tweed, linnen…`, 'search.clear': `Wissen`,
       'filters.open': `Filters`, 'filters.title': `Filters`, 'filters.reset': `Filters wissen`,

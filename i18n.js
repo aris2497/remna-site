@@ -4,7 +4,7 @@
   'use strict';
 
   const pl = {
-    'app.tagline': 'Tkaniny deadstock z wielu sklepów',
+    'app.tagline': 'Tkaniny deadstock z całej Europy w jednym miejscu',
     'tab.search': 'Szukaj',
     'tab.favorites': 'Ulubione',
     'tab.alerts': 'Alerty',
@@ -184,7 +184,7 @@
   };
 
   const en = {
-    'app.tagline': 'Deadstock fabrics from many shops',
+    'app.tagline': 'Europe’s deadstock fabric in one search',
     'tab.search': 'Search',
     'tab.favorites': 'Saved',
     'tab.alerts': 'Alerts',
