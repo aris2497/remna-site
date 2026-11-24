@@ -343,18 +343,24 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
   .view { padding-bottom: 48px; }
   .grid { gap: 22px 18px; }
   .top { padding-top: 18px; }
-  .brand { padding-right: 470px; }            /* miejsce na menu po prawej */
+  .brand { padding-right: 360px; }            /* miejsce na menu po prawej */
 
-  /* Menu: poziome, w prawym górnym rogu */
+  /* Menu: zwykłe linki tekstowe w nagłówku (bez ramki i cienia), aktywny podkreślony.
+     Tło jak strona, żeby przewijana treść innych zakładek nie prześwitywała pod napisami. */
   .tabs {
-    position: fixed; top: 14px; bottom: auto; left: auto; z-index: 30;
+    position: fixed; top: 0; bottom: auto; left: auto; z-index: 30;
     right: max(28px, calc((100vw - 1280px) / 2 + 28px));
-    display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px;
-    background: var(--surface); box-shadow: var(--shadow);
+    display: flex; gap: 26px; padding: 16px 0 0 16px; border: 0; background: var(--bg);
   }
-  .tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
-  .tabs button svg { width: 19px; height: 19px; }
-  .tabs button[aria-current="page"] { background: var(--accent-soft); }
+  .tabs button {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 0 5px; border-radius: 0;
+    font-size: 15px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .tabs button svg { display: none; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-current="page"] { color: var(--accent); border-bottom-color: currentColor; }
+  .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
   .tabs .badge { position: static; margin-left: 2px; }
   .toast { bottom: 28px; }
 
@@ -383,9 +389,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
 @media (min-width: 1200px) {
   .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
-@media (min-width: 960px) and (max-width: 1150px) {
+@media (min-width: 960px) and (max-width: 1100px) {
   .tagline { display: none; }
-  .brand { padding-right: 440px; }
 }
 
 /* Sklepy pogrupowane według krajów (kliknięcie kraju zaznacza wszystkie jego sklepy) */
