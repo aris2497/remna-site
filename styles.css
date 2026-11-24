@@ -303,7 +303,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
   position: relative; margin: 10px var(--gutter-r) 4px var(--gutter-l); padding: 18px 18px 16px;
   background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius);
 }
-.intro h2 { font: 600 21px/1.2 var(--font-display); margin: 0 34px 6px 0; }
+.intro-seen .intro { display: none; }
+.intro h1 { font: 600 21px/1.2 var(--font-display); margin: 0 34px 6px 0; }
 .intro p { margin: 0 0 8px; color: var(--muted); max-width: 70ch; }
 .intro ul { margin: 0 0 12px; padding-left: 18px; display: grid; gap: 4px; max-width: 70ch; }
 .intro-ios { background: var(--accent-soft); color: var(--ink) !important; padding: 8px 10px; border-radius: 10px; }

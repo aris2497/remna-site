@@ -86,6 +86,8 @@
     document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
     document.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
     $('#q').setAttribute('aria-label', t('tab.search'));
+    // strony kategorii są po angielsku i po polsku
+    $('#guide-fabrics').href = 'https://remnafabrics.com/' + (I.getLang() === 'pl' ? 'pl/tkaniny/' : 'fabrics/');
     $('#lang').value = I.getLang();
   }
 
@@ -911,7 +913,7 @@
   // --- Start ----------------------------------------------------------------------
   // --- Powitanie (pierwsza wizyta) -----------------------------------------------------
   function showIntro() {
-    if (storage.getItem('remna-powitanie')) return;
+    if (storage.getItem('remna-powitanie')) { $('#intro').hidden = true; return; }
     const ua = navigator.userAgent || '';
     const iosSafari = /iPhone|iPad|iPod/.test(ua) && !window.navigator.standalone && !N.isNative;
     $('#intro-ios').hidden = !iosSafari;
