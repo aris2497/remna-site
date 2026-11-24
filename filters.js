@@ -487,6 +487,12 @@
 
   /** Link do sklepu ze znacznikiem źródła (utm), żeby sklep widział w swoich statystykach ruch z Remny.
    *  Nie nadpisuje utm, które już są w adresie; zachowuje inne parametry (np. ?variant=…) i #kotwicę. */
+  /** Linki partnerskie (afiliacyjne): domena sklepu → parametr śledzący. Kolejność wyników od tego NIE zależy.
+   *  EVA re-source: program GoAffPro (evaresource-store.goaffpro.com), kod polecający właścicielki. */
+  const AFFILIATE_PARAMS = {
+    'evaresource.com': ['ref', 'vqmfavjx'],
+  };
+
   function shopUrl(url, medium) {
     if (!url) return url;
     try {
@@ -495,6 +501,8 @@
         u.searchParams.set('utm_source', 'remna');
         u.searchParams.set('utm_medium', medium || 'referral');
       }
+      const aff = AFFILIATE_PARAMS[u.hostname.replace(/^www\./, '')];
+      if (aff && !u.searchParams.has(aff[0])) u.searchParams.set(aff[0], aff[1]);
       return u.toString();
     } catch (e) { return url; }
   }
