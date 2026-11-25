@@ -30,7 +30,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Remna">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=ea17c1e">
+  <link rel="stylesheet" href="styles.css?v=c7600e1">
   <!-- Powitanie jest w HTML widoczne (dla Google i bez JS); kto je zamknął, nie widzi go nawet przez chwilę -->
   <script>try { if (localStorage.getItem('remna-powitanie')) document.documentElement.classList.add('intro-seen'); } catch (e) {}</script>
 </head>
@@ -76,8 +76,12 @@
         <button type="button" class="primary-btn intro-go" id="intro-go" data-i18n="intro.go">Start searching</button>
       </section>
 
+      <div class="active-filters" id="active-filters" hidden></div>
       <div class="resultbar">
-        <span id="result-count" aria-live="polite"></span>
+        <span class="resultbar-count">
+          <span id="result-count" aria-live="polite"></span>
+          <button type="button" class="link-btn" id="clear-filters" hidden data-i18n="results.clearAll">Clear all filters</button>
+        </span>
         <div class="resultbar-actions">
           <button type="button" class="text-btn" id="save-alert">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
@@ -90,6 +94,7 @@
         </div>
       </div>
 
+      <p class="spell" id="spell" hidden aria-live="polite"></p>
       <main class="grid" id="results" aria-busy="true"></main>
       <div class="more-wrap"><button type="button" class="ghost-btn" id="load-more" hidden data-i18n="results.more">Show more</button></div>
     </section>
@@ -203,12 +208,12 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <script src="config.js?v=ea17c1e"></script>
-  <script src="i18n.js?v=ea17c1e"></script>
-  <script src="i18n-langs.js?v=ea17c1e"></script>
-  <script src="filters.js?v=ea17c1e"></script>
-  <script src="data.js?v=ea17c1e"></script>
-  <script src="native.js?v=ea17c1e"></script>
-  <script src="app.js?v=ea17c1e"></script>
+  <script src="config.js?v=c7600e1"></script>
+  <script src="i18n.js?v=c7600e1"></script>
+  <script src="i18n-langs.js?v=c7600e1"></script>
+  <script src="filters.js?v=c7600e1"></script>
+  <script src="data.js?v=c7600e1"></script>
+  <script src="native.js?v=c7600e1"></script>
+  <script src="app.js?v=c7600e1"></script>
 </body>
 </html>

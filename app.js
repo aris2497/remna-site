@@ -127,11 +127,22 @@
   }
   $('#sort').addEventListener('change', (e) => setFilters(Object.assign({}, state.filters, { sort: e.target.value })));
 
-  function setFilters(f) {
-    state.filters = R.normalizeFilters(f);
+  /** Nowe filtry. opts.fromBox = zmiana z pola wyszukiwania (bez niego słowa wyłączonych filtrów znikają z pola).
+   *  opts.keepSpell = zostaw podpowiedź pisowni (przy pokazaniu poprawionych wyników). */
+  function setFilters(f, opts) {
+    const o = opts || {};
+    let n = R.normalizeFilters(f);
+    if (!o.fromBox) {
+      n = R.dropOffFilterWords(n);
+      if ($('#q').value.trim() !== n.q) { $('#q').value = n.q; $('#q-clear').hidden = !n.q; }
+      state.typed = R.extractFilters(n.q, true);
+    }
+    if (!o.keepSpell) state.spell = null;
+    state.filters = n;
     saveFilters();
     renderQuick();
     renderFilterBadge();
+    renderActive();
     $('#sort').value = state.filters.sort;
     // Nowe wyniki zaczynają się od góry listy (inaczej po przewinięciu widać środek nowej listy).
     if (window.scrollY > 0) window.scrollTo(0, 0);
@@ -149,34 +160,129 @@
   let qTimer = null;
   $('#q').value = state.filters.q;
   $('#q-clear').hidden = !state.filters.q;
-  /** Tekst z wyszukiwarki → filtry: kolory i materiały („red silk”) stają się filtrami, reszta zostaje tekstem. */
-  function filtersFromSearchBox(final) {
-    const x = R.extractFilters($('#q').value, final);
-    const f = Object.assign({}, state.filters, { q: x.q.trim() });
-    if (x.colors.length || x.fibers.length) {
-      f.colors = [...new Set(state.filters.colors.concat(x.colors))];
-      f.fibers = [...new Set(state.filters.fibers.concat(x.fibers))];
-      if (x.fibers.length && f.kind === 'leather') f.kind = 'all';
-      $('#q').value = x.q;   // rozpoznane słowa znikają z pola (widać je jako zaznaczone filtry)
-      $('#q-clear').hidden = !x.q;
-    }
-    return f;
+  // Słowa z pola, które ostatnio włączyły filtry (żeby wiedzieć, co jest nowe, a co zostało usunięte z pola)
+  state.typed = R.extractFilters(state.filters.q, true);
+  /** Tekst z wyszukiwarki → filtry: kolory, materiały i wzór („gold silk”) włączają filtry (chipy), a tekst zostaje w polu.
+   *  Nowe słowo zastępuje inny filtr tego samego rodzaju; wtedy krótka informacja („Kolor zmieniony na Złoty”). */
+  function filtersFromSearchBox(final, text) {
+    const r = R.applySearchText(state.filters, text == null ? $('#q').value : text, state.typed, final);
+    state.typed = r.typed;
+    if (r.changed.length) toast(r.changed.map((c) => t('search.changed.' + c.field, c.ids.map((id) => filterValueName(c.field, id)).join(', '))).join(' · '));
+    return r.filters;
+  }
+  function filterValueName(field, id) {
+    const lang = I.getLang();
+    if (field === 'colors') { const c = R.COLORS.find((x) => x.id === id); return c ? (c[lang] || c.en) : id; }
+    if (field === 'fibers') return fiberName(id);
+    return t(id === 'plain' ? 'filters.patternPlain' : 'filters.patternPatterned');
   }
   $('#q').addEventListener('input', () => {
     $('#q-clear').hidden = !$('#q').value;
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => setFilters(filtersFromSearchBox(false)), 350);
+    qTimer = setTimeout(() => setFilters(filtersFromSearchBox(false), { fromBox: true }), 350);
   });
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
     clearTimeout(qTimer);
     $('#q').blur();
-    setFilters(filtersFromSearchBox(true));
+    setFilters(filtersFromSearchBox(true), { fromBox: true });
   });
   $('#q-clear').addEventListener('click', () => {
     $('#q').value = '';
     $('#q-clear').hidden = true;
-    setFilters(Object.assign({}, state.filters, { q: '' }));
+    setFilters(filtersFromSearchBox(true, ''), { fromBox: true });
+  });
+
+  // --- Włączone filtry jako chipy z ✕ (kolor, materiał, wzór) i „Wyczyść wszystkie filtry” ----------
+  function renderActive() {
+    const f = state.filters;
+    const chips = [];
+    const lang = I.getLang();
+    for (const id of f.colors) {
+      const c = R.COLORS.find((x) => x.id === id);
+      if (c) chips.push(['colors', id, `<span class="dot" style="background:${c.hex}"></span>${esc(c[lang] || c.en)}`]);
+    }
+    for (const id of f.fibers) chips.push(['fibers', id, esc(fiberName(id))]);
+    if (f.pattern) chips.push(['pattern', f.pattern, esc(filterValueName('pattern', f.pattern))]);
+    $('#active-filters').innerHTML = chips.map(([field, id, label]) =>
+      `<button type="button" class="chip on" data-remove="${field}:${esc(id)}" aria-label="${esc(t('filters.remove', label.replace(/<[^>]+>/g, '')))}">${label}<span class="x" aria-hidden="true">✕</span></button>`).join('');
+    $('#active-filters').hidden = !chips.length;
+    $('#clear-filters').hidden = !R.countActive(f);
+  }
+  $('#active-filters').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-remove]');
+    if (!b) return;
+    const [field, id] = b.dataset.remove.split(':');
+    const f = Object.assign({}, state.filters);
+    if (field === 'pattern') f.pattern = null;
+    else f[field] = f[field].filter((x) => x !== id);
+    setFilters(f);
+  });
+  function clearAllFilters() {
+    setFilters(Object.assign(R.defaultFilters(), { q: state.filters.q, sort: state.filters.sort }));
+  }
+  $('#clear-filters').addEventListener('click', clearAllFilters);
+
+  // --- Literówki: „Czy chodziło o…?” / „Wyniki dla…” ---------------------------------
+  let spellerPromise = null;
+  function getSpeller() {
+    if (!spellerPromise) {
+      spellerPromise = window.fetch('data/words.json').then((r) => (r.ok ? r.json() : [])).catch(() => [])
+        .then((words) => R.makeSpeller(Array.isArray(words) ? words : []));
+    }
+    return spellerPromise;
+  }
+  const FEW_RESULTS = 5;
+  /** Po wynikach z wpisanym tekstem: 0 wyników → od razu poprawione wyniki; mniej niż 5 → podpowiedź, gdy poprawka da więcej. */
+  async function checkSpelling(seq, res) {
+    const f = state.filters;
+    if (!R.textQuery(f) || f.q === state.noSpellFor || res.total == null || res.total >= FEW_RESULTS) return;
+    const speller = await getSpeller();
+    const fixed = speller.correct(f.q);
+    if (!fixed || seq !== state.seq) return;
+    const cf = R.applySearchText(f, fixed, state.typed, true);
+    if (res.total === 0) {
+      const res2 = await source.search(cf.filters, 0);
+      if (seq !== state.seq || !res2.items.length) return;
+      const original = f.q;
+      $('#q').value = fixed;
+      state.typed = cf.typed;
+      state.filters = cf.filters;
+      saveFilters(); renderQuick(); renderFilterBadge(); renderActive();
+      state.spell = { mode: 'showing', text: fixed, original };
+      state.items = res2.items;
+      state.total = res2.total;
+      state.approx = res2.approx && res2.total != null && res2.total > 1000;
+      state.hasMore = res2.hasMore != null ? res2.hasMore : res2.items.length === R.PAGE_SIZE;
+      source.track('search', { query: fixed, detail: 'poprawka z: ' + original + '; wyniki ' + (res2.total == null ? '?' : res2.total) });
+    } else {
+      const n = await source.countNew(cf.filters, null);
+      if (seq !== state.seq || !(n > res.total)) return;
+      state.spell = { mode: 'suggest', text: fixed };
+    }
+    renderResults();
+  }
+  function renderSpell() {
+    const el = $('#spell');
+    const s = state.spell;
+    el.hidden = !s;
+    if (!s) { el.innerHTML = ''; return; }
+    const link = (cls, text) => `<button type="button" class="link-btn ${cls}">${esc(text)}</button>`;
+    el.innerHTML = s.mode === 'showing'
+      ? `${esc(t('search.showingFor'))} <strong>${esc(s.text)}</strong>. ${esc(t('search.insteadFor'))} ${link('spell-original', (I.getLang() === 'pl' ? '„' : '“') + s.original + (I.getLang() === 'pl' ? '”' : '”'))}`
+      : `${esc(t('search.didYouMean'))} ${link('spell-fix', s.text)}?`;
+  }
+  $('#spell').addEventListener('click', (e) => {
+    const s = state.spell;
+    if (!s) return;
+    if (e.target.closest('.spell-fix')) {
+      $('#q').value = s.text;
+      setFilters(filtersFromSearchBox(true, s.text), { fromBox: true });
+    } else if (e.target.closest('.spell-original')) {
+      state.noSpellFor = s.original;   // „szukaj jednak tak, jak wpisałam”
+      $('#q').value = s.original;
+      setFilters(filtersFromSearchBox(true, s.original), { fromBox: true });
+    }
   });
 
   async function runSearch(reset) {
@@ -195,6 +301,10 @@
       state.total = res.total;
       state.approx = res.approx && res.total != null && res.total > 1000;
       state.hasMore = res.hasMore != null ? res.hasMore : res.items.length === R.PAGE_SIZE;
+      if (reset && !state.spell) {
+        const spelled = checkSpelling(seq, res).catch(() => {});
+        if (!res.items.length) await spelled;   // bez wyników: zamiast pustej strony od razu poprawione wyniki
+      }
     } catch (e) {
       if (seq !== state.seq) return;
       state.error = true;
@@ -256,6 +366,7 @@
   function renderResults() {
     const el = $('#results');
     el.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+    renderSpell();
     if (state.error && !state.items.length) {
       el.innerHTML = `<div class="empty"><strong>${esc(t('results.error'))}</strong><button type="button" class="ghost-btn" id="retry">${esc(t('results.retry'))}</button></div>`;
       $('#retry').onclick = () => runSearch(true);
@@ -270,7 +381,15 @@
       return;
     }
     if (!state.items.length) {
-      el.innerHTML = `<div class="empty"><strong>${esc(t('results.empty'))}</strong>${esc(t('results.emptyHint'))}</div>`;
+      // Puste wyniki: z filtrami → przycisk „Wyczyść filtry”; sam tekst → sprawdź pisownię
+      if (R.countActive(state.filters)) {
+        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyFilters'))}</strong><button type="button" class="ghost-btn" id="empty-clear">${esc(t('results.clearFilters'))}</button></div>`;
+        $('#empty-clear').onclick = clearAllFilters;
+      } else if (state.filters.q) {
+        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyQuery', state.filters.q))}</strong>${esc(t('results.emptyQueryHint'))}</div>`;
+      } else {
+        el.innerHTML = `<div class="empty"><strong>${esc(t('results.empty'))}</strong>${esc(t('results.emptyHint'))}</div>`;
+      }
       $('#result-count').textContent = t('results.count', 0);
       $('#load-more').hidden = true;
       return;
@@ -628,7 +747,7 @@
     const seq = ++countSeq;
     countTimer = setTimeout(async () => {
       try {
-        const n = await source.countNew(state.draft, null);
+        const n = await source.countNew(R.dropOffFilterWords(state.draft), null);
         if (seq === countSeq) $('#filters-apply').textContent = t('filters.show', n);
       } catch (e) { /* zostaje bez liczby */ }
     }, 250);
@@ -780,12 +899,8 @@
       $('#q').value = a.filters.q || '';
       $('#q-clear').hidden = !a.filters.q;
       // Pokaż najnowsze dopasowania (od ostatniej wizyty, jeśli są nowe)
-      const f = Object.assign({}, a.filters, { sort: 'newest' });
-      state.filters = R.normalizeFilters(f);
-      saveFilters();
-      renderQuick(); renderFilterBadge(); $('#sort').value = 'newest';
       switchView('search');
-      runSearch(true);
+      setFilters(Object.assign({}, a.filters, { sort: 'newest' }));
       void since;
     } else if (del) {
       const a = alerts.list().find((x) => x.id === del.dataset.del);
@@ -993,7 +1108,11 @@
     if (WEB) {
       const params = new URLSearchParams(location.search);
       const fromUrl = R.filtersFromParams(params);
-      if (fromUrl) { state.filters = fromUrl; $('#q').value = fromUrl.q || ''; renderQuick(); renderFilterBadge(); $('#sort').value = fromUrl.sort; }
+      if (fromUrl) { state.filters = fromUrl; $('#q').value = fromUrl.q || ''; state.typed = R.extractFilters(fromUrl.q, true); renderQuick(); renderFilterBadge(); $('#sort').value = fromUrl.sort; }
+    }
+    renderActive();
+    if (WEB) {
+      const params = new URLSearchParams(location.search);
       openId = params.get('o');
     }
     await runSearch(true);

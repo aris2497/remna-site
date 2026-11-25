@@ -89,12 +89,14 @@
     async function searchTiered(filters, page, key) {
       const n = R.normalizeFilters(filters);
       const knownTiers = R.unknownFields(n).length ? ['only', 'missing'] : [null];
-      const byTitle = !!(R.tsQuery(n.q) && n.sort === 'newest');
+      const byTitle = !!(R.tsQuery(R.textQuery(n)) && n.sort === 'newest');
       const params = (known, title, offset, limit, select) =>
         R.restParams(filters, Object.assign({ page: 0, shopsByCountry }, known ? { known } : {}, title ? { title } : {}, select ? { select } : {}))
           .filter(([k]) => k !== 'limit' && k !== 'offset')
           .concat([['limit', String(limit)], ['offset', String(offset)]]);
-      const countOf = (known, title) => getJson('/products?' + R.toQueryString(params(known, title, 0, 1, 'id')), { Prefer: 'count=exact' })
+      // Liczniki: limit=0 i bez „order”. Z limit=1 baza przy braku trafień przechodzi po kolei wszystkie oferty
+      // (~30 s, przekroczony limit czasu); z limit=0 liczy przez indeks wyszukiwania (ok. 0,2 s)
+      const countOf = (known, title) => getJson('/products?' + R.toQueryString(params(known, title, 0, 0, 'id').filter(([k]) => k !== 'order')), { Prefer: 'count=exact' })
         .then((r) => parseTotal(r.headers));
       const tiers = [];
       for (const known of knownTiers) {
@@ -131,12 +133,12 @@
     /** Strona startowa bez tekstu i filtrów: po 2 najnowsze oferty z każdego sklepu na stronę (różnorodnie). */
     const FEED_PER_SHOP = 2;
     function isFeed(nf, since) {
-      return !nf.q && !R.countActive(nf) && nf.sort === 'newest' && !since;
+      return !R.textQuery(nf) && !R.countActive(nf) && nf.sort === 'newest' && !since;
     }
     async function searchFeed(filters, page) {
       const qs = 'pg=' + (page || 0) + '&per_shop=' + FEED_PER_SHOP + '&select=' + encodeURIComponent(R.LIST_FIELDS);
       const countParams = R.restParams(filters, { page: 0, shopsByCountry, select: 'id' })
-        .filter(([k]) => k !== 'order' && k !== 'limit' && k !== 'offset').concat([['limit', '1']]);
+        .filter(([k]) => k !== 'order' && k !== 'limit' && k !== 'offset').concat([['limit', '0']]);
       const [feed, all] = await Promise.all([
         getJson('/rpc/feed?' + qs),
         // licznik tylko na pierwszej stronie; gdy baza jest zajęta (wgrywanie ofert), lista i tak się pokazuje
@@ -170,7 +172,7 @@
       }
       const key = R.filtersKey(filters) + '|' + nf.sort;
       const wantTiered = mode === 'live' && !since &&
-        ((R.tsQuery(nf.q) && nf.sort === 'newest') || R.unknownFields(nf).length > 0);
+        ((R.tsQuery(R.textQuery(nf)) && nf.sort === 'newest') || R.unknownFields(nf).length > 0);
       if (wantTiered && (!page || tieredFor.get(key) !== false)) {
         try {
           const res = await searchTiered(filters, page, key);
@@ -196,8 +198,9 @@
         }
       }
       const all = demo.products.filter((p) => R.matchLocal(p, filters, { shopsByCountry, since }));
-      const byTitle = (list) => (nf.q && nf.sort === 'newest'
-        ? list.filter((p) => R.titleMatches(p, nf.q)).concat(list.filter((p) => !R.titleMatches(p, nf.q))) : list);
+      const tq = R.textQuery(nf);
+      const byTitle = (list) => (tq && nf.sort === 'newest'
+        ? list.filter((p) => R.titleMatches(p, tq)).concat(list.filter((p) => !R.titleMatches(p, tq))) : list);
       // jak w bazie: najpierw pewne, potem oferty bez części cech (oznaczone _unknown)
       const sortedAll = R.sortLocal(all, nf.sort);
       const sure = sortedAll.filter((p) => R.matchLocal(p, filters, { shopsByCountry, since, known: 'only' }));
@@ -212,7 +215,7 @@
       if (mode === 'live') {
         const params = R.restParams(filters, { page: 0, shopsByCountry, since, select: 'id' })
           .filter(([k]) => k !== 'order' && k !== 'limit' && k !== 'offset');
-        params.push(['limit', '1']);
+        params.push(['limit', '0']);
         const { headers: h } = await getJson('/products?' + R.toQueryString(params), { Prefer: 'count=exact' });
         return parseTotal(h) || 0;
       }

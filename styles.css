@@ -111,6 +111,15 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
   padding: 12px var(--gutter-r) 8px var(--gutter-l); color: var(--muted); font-size: 14px;
 }
 .resultbar-actions { display: flex; align-items: center; gap: 4px; }
+.resultbar-count { display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.link-btn { border: 0; background: transparent; padding: 0; color: var(--accent); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* włączone filtry (kolor, materiał, wzór) jako chipy z ✕ */
+.active-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px var(--gutter-r) 0 var(--gutter-l); }
+.active-filters .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); padding: 5px 10px 5px 12px; font-size: 13.5px; }
+.active-filters .chip .x { font-size: 11px; color: var(--muted); margin-left: 1px; }
+/* „Wyniki dla… / Czy chodziło o…?” */
+.spell { margin: 0 var(--gutter-r) 10px var(--gutter-l); font-size: 14.5px; color: var(--ink); }
+.spell .link-btn { font-size: inherit; }
 #result-count { font-variant-numeric: tabular-nums; }
 .text-btn { border: 0; background: transparent; color: var(--accent); font-weight: 600; padding: 6px 8px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; }
 .text-btn svg { width: 18px; height: 18px; }

@@ -271,6 +271,11 @@
     };
     COLORS.forEach((c) => { add(c.id, 'colors', c.id); LANGS.forEach((l) => add(c[l], 'colors', c.id)); });
     FIBERS.filter((f) => f.id !== 'leather').forEach((f) => { add(f.id, 'fibers', f.id); LANGS.forEach((l) => add(f[l], 'fibers', f.id)); });
+    // wzór: gładkie / wzorzyste (ogólne słowa; konkretne wzory jak „kwiaty” zostają tekstem)
+    ['plain', 'solid', 'gładki', 'gładka', 'gładkie', 'uni', 'unie', 'unito', 'einfarbig', 'unifarben', 'effen', 'liso', 'lisa']
+      .forEach((w) => add(w, 'pattern', 'plain'));
+    ['patterned', 'wzorzysty', 'wzorzysta', 'wzorzyste', 'gemustert', 'motifs', 'fantasia', 'gedessineerd']
+      .forEach((w) => add(w, 'pattern', 'patterned'));
     return map;
   })();
   function filterWord(word) {
@@ -281,23 +286,170 @@
     const a = aliasWord(k);   // odmiany: „czerwona”, „jedwabny”, „wełniany”…
     return a !== k && FILTER_WORDS[a] ? FILTER_WORDS[a] : null;
   }
+  // spójniki („silk or wool”, „jedwab lub wełna”) nie mają sensu jako tekst, gdy słowa obok stały się filtrami
+  const STOP = ['or', 'and', 'lub', 'albo', 'oraz', 'und', 'oder', 'et', 'ou', 'en', 'of', 'y', 'o', 'e', 'i', 'w', 'in', 'z', 'with'];
   function extractFilters(text, final) {
     const raw = String(text || '');
     const words = raw.split(/\s+/).filter(Boolean);
     const keepLast = !final && words.length && !/\s$/.test(raw);
-    const out = { q: '', colors: [], fibers: [] };
+    const out = { q: '', colors: [], fibers: [], pattern: null };
     const rest = [];
     words.forEach((w, i) => {
       const hit = keepLast && i === words.length - 1 ? null : filterWord(w);
-      if (hit) { if (!out[hit[0]].includes(hit[1])) out[hit[0]].push(hit[1]); } else rest.push(w);
+      if (hit && hit[0] === 'pattern') out.pattern = hit[1];
+      else if (hit) { if (!out[hit[0]].includes(hit[1])) out[hit[0]].push(hit[1]); } else rest.push(w);
     });
-    // spójniki („silk or wool”, „jedwab lub wełna”) nie mają sensu jako tekst, gdy słowa obok stały się filtrami
-    const STOP = ['or', 'and', 'lub', 'albo', 'oraz', 'und', 'oder', 'et', 'ou', 'and', 'en', 'of', 'y', 'o', 'e', 'i', 'w', 'in', 'z', 'with'];
-    const found = out.colors.length + out.fibers.length > 0;
+    const found = out.colors.length + out.fibers.length > 0 || !!out.pattern;
     const kept = found ? rest.filter((w, i) => !(STOP.includes(w.toLowerCase()) && !(keepLast && i === rest.length - 1))) : rest;
     out.q = kept.join(' ');
     if (!final && /\s$/.test(raw) && kept.length) out.q += ' ';
     return out;
+  }
+
+  /** Tekst, którego naprawdę szukamy: wpisane słowa bez tych, które już działają jako włączony filtr
+   *  („gold metallic” z filtrem Złoty → „metallic”). Słowo filtra, który jest wyłączony, zostaje zwykłym tekstem. */
+  function textQuery(f) {
+    const n = normalizeFilters(f);
+    const words = n.q.split(/\s+/).filter(Boolean);
+    let found = false;
+    const rest = words.filter((w) => {
+      const hit = filterWord(w);
+      const on = hit && (hit[0] === 'pattern' ? n.pattern === hit[1] : n[hit[0]].includes(hit[1]));
+      if (on) found = true;
+      return !on;
+    });
+    return (found ? rest.filter((w) => !STOP.includes(w.toLowerCase())) : rest).join(' ');
+  }
+
+  /**
+   * Wpisany tekst → filtry. Słowa koloru, materiału i wzoru włączają filtr (chip), a tekst zostaje w polu.
+   *  prevTyped = wynik extractFilters z poprzedniego razu: nowe wpisane słowo ZASTĘPUJE wcześniej ustawiony
+   *  filtr tego rodzaju (zielony → „gold” = złoty), a słowo usunięte z pola wyłącza swój filtr.
+   *  Zwraca {filters, typed, changed: [{field, ids}]} (changed = co zastąpiło inny filtr, do krótkiej informacji).
+   */
+  function applySearchText(f, text, prevTyped, final) {
+    const x = extractFilters(text, final);
+    const prev = prevTyped || { colors: [], fibers: [], pattern: null };
+    const n = normalizeFilters(Object.assign({}, f, { q: String(text || '').trim() }));
+    const changed = [];
+    for (const k of ['colors', 'fibers']) {
+      const added = x[k].filter((v) => !prev[k].includes(v));
+      let cur = n[k].filter((v) => !(prev[k].includes(v) && !x[k].includes(v)));
+      if (added.length) {
+        if (cur.some((v) => !x[k].includes(v))) changed.push({ field: k, ids: added });
+        cur = x[k].slice();
+      }
+      n[k] = cur;
+    }
+    if (x.pattern && x.pattern !== prev.pattern) {
+      if (n.pattern && n.pattern !== x.pattern) changed.push({ field: 'pattern', ids: [x.pattern] });
+      n.pattern = x.pattern;
+    } else if (!x.pattern && prev.pattern && n.pattern === prev.pattern) n.pattern = null;
+    if (x.fibers.length && n.kind === 'leather') n.kind = 'all';
+    return { filters: normalizeFilters(n), typed: x, changed };
+  }
+
+  /** Po zmianie filtrów poza polem (✕ na chipie, arkusz filtrów): słowa wyłączonych filtrów znikają z pola. */
+  function dropOffFilterWords(f) {
+    const n = normalizeFilters(f);
+    const words = n.q.split(/\s+/).filter(Boolean);
+    const kept = words.filter((w) => {
+      const hit = filterWord(w);
+      return !hit || (hit[0] === 'pattern' ? n.pattern === hit[1] : n[hit[0]].includes(hit[1]));
+    });
+    if (kept.length === words.length) return n;
+    const anyFilter = kept.some((w) => filterWord(w));
+    const q = (anyFilter ? kept : kept.filter((w) => !STOP.includes(w.toLowerCase()))).join(' ');
+    return Object.assign(n, { q });
+  }
+
+  // --- Literówki: „velvit” → velvet, „metalic” → metallic -----------------------
+  /** Ile pomyłek dopuszczamy: krótkie słowa (< 4 litery) żadnej, 4–7 liter jedną, 8+ dwie. */
+  function maxTypos(len) { return len < 4 ? 0 : len <= 7 ? 1 : 2; }
+  /** Odległość edycyjna (wstawienie, usunięcie, zamiana, przestawienie sąsiednich liter); > max → max + 1. */
+  function editDistance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev2 = null;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      let rowMin = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
+        cur.push(v);
+        if (v < rowMin) rowMin = v;
+      }
+      if (rowMin > max) return max + 1;
+      prev2 = prev;
+      prev = cur;
+    }
+    return Math.min(prev[b.length], max + 1);
+  }
+  /** Słowa tkanin, kolorów, materiałów i wzorów, które znamy zawsze (też bez listy słów z nazw ofert). */
+  function baseWords() {
+    const out = new Set();
+    const add = (w) => String(w || '').toLowerCase().split(/\s+/).forEach((x) => { x = x.replace(/^=/, ''); if (x.length >= 4) out.add(x); });
+    TERM_GROUPS.forEach((g) => g.forEach(add));
+    Object.keys(FILTER_WORDS).forEach(add);
+    Object.keys(WORD_ALIASES).forEach(add);
+    return [...out];
+  }
+  /**
+   * Poprawianie pisowni. words = [[słowo, ile razy w nazwach ofert], ...] (data/words.json, z nazw ofert w bazie).
+   *  correct(tekst) → poprawiony tekst albo null, gdy nie ma czego poprawić. Słowa znane (z listy, filtry, odmiany,
+   *  początki znanych słów) zostają; nieznane zamieniamy na najbliższe znane (najmniej pomyłek, potem najczęstsze).
+   */
+  function makeSpeller(words) {
+    const byKey = new Map();   // forma bez ogonków → {w, n}
+    const put = (w, cnt) => {
+      const k = _plain(w);
+      const cur = byKey.get(k);
+      if (!cur || cnt > cur.n) byKey.set(k, { w, n: cnt });
+    };
+    for (const [w, cnt] of words || []) if (w && String(w).length >= 4) put(String(w).toLowerCase(), Number(cnt) || 1);
+    for (const w of baseWords()) put(w, 1e6);   // słowa tkanin wygrywają remisy
+    const keys = [...byKey.keys()];
+    function known(w) {
+      const k = _plain(w);
+      if (byKey.has(k) || filterWord(w) || termGroup(w) || aliasWord(w) !== w) return true;
+      return keys.some((x) => x.length > k.length && x.startsWith(k));
+    }
+    function fix(w) {
+      const k = _plain(w);
+      const max = maxTypos(k.length);
+      if (!max || known(w)) return null;
+      let best = null, bestD = max + 1, bestN = -1;
+      for (const x of keys) {
+        if (Math.abs(x.length - k.length) > max || maxTypos(x.length) === 0) continue;
+        const d = editDistance(k, x, max);
+        if (d > max) continue;
+        const e = byKey.get(x);
+        if (d < bestD || (d === bestD && e.n > bestN)) { best = e.w; bestD = d; bestN = e.n; }
+      }
+      return best;
+    }
+    function correct(text) {
+      let changed = false;
+      const out = String(text || '').trim().split(/(\s+)/).map((part) => {
+        const w = part.toLowerCase();
+        if (!/^[\p{L}-]+$/u.test(w)) return part;
+        const c = fix(w);
+        if (c && c !== w) { changed = true; return c; }
+        return part;
+      }).join('');
+      return changed ? out : null;
+    }
+    return { correct, size: byKey.size };
+  }
+  /** Lista słów z nazw ofert (tryb podglądu: z próbki ofert). */
+  function titleWordCounts(products) {
+    const cnt = new Map();
+    for (const p of products || []) {
+      for (const w of String(p.title || '').toLowerCase().split(/[^\p{L}]+/u)) if (w.length >= 4) cnt.set(w, (cnt.get(w) || 0) + 1);
+    }
+    return [...cnt.entries()];
   }
 
   /** Czy szukane słowa są w nazwie oferty (do kolejności „najpierw trafienia w nazwie”). */
@@ -422,7 +574,7 @@
     if (shopIds) p.push(['shop_id', 'in.(' + shopIds.join(',') + ')']);
     const since = o.since || (n.newDays ? sinceIso(n.newDays, o.now) : null);
     if (since) p.push(['first_seen_at', 'gt.' + since]);
-    const ts = tsQuery(n.q);
+    const ts = tsQuery(textQuery(n));
     if (ts) p.push(['search', 'fts(simple).' + ts]);
     // Kolejność „najtrafniejsze”: najpierw oferty z szukanym słowem w nazwie (o.title = 'only'), potem reszta ('exclude')
     if (ts && o.title === 'only') p.push(['title_fts', 'fts(simple).' + ts]);
@@ -563,7 +715,7 @@
     if (shopIds && !shopIds.includes(p.shop_id)) return false;
     const since = o.since || (n.newDays ? sinceIso(n.newDays, o.now) : null);
     if (since && !(p.first_seen_at && p.first_seen_at > since)) return false;
-    const words = searchWords(n.q);
+    const words = searchWords(textQuery(n));
     if (words.length) {
       const hay = ((p.search_text || p.title || '') + ' ' + (p.fibers || []).join(' ') + ' ' + (p.colors || []).join(' ')).toLowerCase();
       const tokens = hay.split(/[^\p{L}\p{N}]+/u);
@@ -781,7 +933,8 @@
     const L = DESCRIBE[lang] ? lang : 'en';
     const W = DESCRIBE[L];
     const parts = [];
-    if (n.q) parts.push('„' + n.q + '”');
+    const tq = textQuery(n);
+    if (tq) parts.push('„' + tq + '”');
     if (n.kind === 'leather') parts.push(W.leather);
     const fiberNames = n.fibers.map((id) => FIBERS.find((f2) => f2.id === id)).filter(Boolean).map((x) => (x[L] || x.en).toLowerCase());
     if (n.purity && fiberNames.length) {
@@ -832,7 +985,8 @@
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
-    restParams, unknownFields, pickImage, shopUrl, extractFilters, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    restParams, unknownFields, pickImage, shopUrl, extractFilters, textQuery, applySearchText, dropOffFilterWords,
+    maxTypos, editDistance, makeSpeller, titleWordCounts, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,
