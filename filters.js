@@ -644,6 +644,12 @@
   const AFFILIATE_PARAMS = {
     'evaresource.com': ['ref', 'vqmfavjx'],
   };
+  /** Programy w sieci Awin: domena sklepu → id reklamodawcy. Link prowadzi przez awin1.com do tej samej strony tkaniny
+   *  (ued = adres docelowy). awinaffid = konto wydawcy Remna w Awin. Kolejność wyników od tego NIE zależy. */
+  const AWIN_PUBLISHER = '3164734';
+  const AWIN_PROGRAMMES = {
+    'couponscouture.fr': '124120',   // Coupons Couture, przyjęte 27.11.2026
+  };
 
   function shopUrl(url, medium) {
     if (!url) return url;
@@ -653,8 +659,14 @@
         u.searchParams.set('utm_source', 'remna');
         u.searchParams.set('utm_medium', medium || 'referral');
       }
-      const aff = AFFILIATE_PARAMS[u.hostname.replace(/^www\./, '')];
+      const host = u.hostname.replace(/^www\./, '');
+      const aff = AFFILIATE_PARAMS[host];
       if (aff && !u.searchParams.has(aff[0])) u.searchParams.set(aff[0], aff[1]);
+      const awin = AWIN_PROGRAMMES[host];
+      if (awin) {
+        return 'https://www.awin1.com/cread.php?awinmid=' + awin + '&awinaffid=' + AWIN_PUBLISHER +
+          '&clickref=' + encodeURIComponent(medium || 'referral') + '&ued=' + encodeURIComponent(u.toString());
+      }
       return u.toString();
     } catch (e) { return url; }
   }
