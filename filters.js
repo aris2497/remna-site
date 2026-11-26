@@ -763,15 +763,20 @@
     }
   }
 
-  /** Najważniejsza cena na karcie: za metr, jeśli ją znamy. */
+  /** Sklepy, które pokazują ceny BEZ VAT (VAT dolicza koszyk). Cen nie przeliczamy, tylko dopisujemy „+ VAT”.
+   *  Ta sama lista: NET_PRICE_SHOPS w collector/shops.py. */
+  const NET_PRICE_SHOPS = new Set(['eva-resource', 'fabricsight']);
+
+  /** Najważniejsza cena na karcie: za metr, jeśli ją znamy. plusVat = cena sklepu jest bez VAT. */
   function priceParts(p, lang) {
     const cur = p.currency || 'EUR';
+    const plusVat = NET_PRICE_SHOPS.has(p.shop_id);
     if (p.price_per_m != null) {
       const main = money(p.price_per_m, cur, lang);
       const eur = cur !== 'EUR' && p.price_per_m_eur != null ? money(p.price_per_m_eur, 'EUR', lang) : null;
-      return { main, unit: 'per_m', eur, piece: p.price_unit === 'piece' ? p.piece_length_m : null, total: p.price_unit === 'piece' ? money(p.price_min, cur, lang) : null };
+      return { main, unit: 'per_m', eur, piece: p.price_unit === 'piece' ? p.piece_length_m : null, total: p.price_unit === 'piece' ? money(p.price_min, cur, lang) : null, plusVat };
     }
-    return { main: money(p.price_min, cur, lang), unit: p.kind === 'leather' ? 'leather' : 'unknown', eur: null, piece: null, total: null };
+    return { main: money(p.price_min, cur, lang), unit: p.kind === 'leather' ? 'leather' : 'unknown', eur: null, piece: null, total: null, plusVat };
   }
 
   function compositionText(p, lang) {

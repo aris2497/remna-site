@@ -339,6 +339,7 @@
     let price;
     if (pr.unit === 'per_m') price = `${esc(pr.main)}<small>${esc(t('card.perM'))}</small>` + (pr.piece ? ` <small>· ${esc(t('card.piece', pr.piece))}</small>` : '');
     else price = `${esc(pr.main)} <small>${esc(t('card.priceUnknown'))}</small>`;
+    if (pr.plusVat) price += ` <small class="vat">${esc(t('price.plusVat'))}</small>`;
     // w wynikach przy filtrze koloru: zdjęcie wariantu w tym kolorze (ulubione: zdjęcie główne)
     const src = R.pickImage(p, o.favorites ? null : state.filters);
     const img = src
@@ -509,11 +510,11 @@
     const pr = R.priceParts(p, lang);
     let priceHtml;
     if (pr.unit === 'per_m') {
-      priceHtml = `<div class="big">${esc(pr.main)} <small>${esc(t('detail.perM'))}</small></div>`;
+      priceHtml = `<div class="big">${esc(pr.main)} <small>${esc(t('detail.perM'))}</small>${pr.plusVat ? ` <small class="vat">${esc(t('price.plusVat'))}</small>` : ''}</div>`;
       if (pr.piece) priceHtml += `<div class="sub">${esc(t('detail.piece', pr.piece, pr.total))}</div>`;
       if (pr.eur) priceHtml += `<div class="sub">${esc(t('detail.perMEur', pr.eur))}</div>`;
     } else {
-      priceHtml = `<div class="sub">${esc(t('detail.priceFrom'))}</div><div class="big">${esc(pr.main)}</div>`;
+      priceHtml = `<div class="sub">${esc(t('detail.priceFrom'))}</div><div class="big">${esc(pr.main)}${pr.plusVat ? ` <small class="vat">${esc(t('price.plusVat'))}</small>` : ''}</div>`;
       if (p.kind !== 'leather') priceHtml += `<div class="sub">${esc(t('detail.priceUnknownUnit'))}</div>`;
     }
     const comp = R.compositionText(p, lang);
