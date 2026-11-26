@@ -70,7 +70,10 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .top.scrolled { border-bottom-color: var(--line); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); background: var(--bg); z-index: 10; }
 .brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.wordmark { font: 600 26px/1 var(--font-display); letter-spacing: .01em; }
+.wordmark {                                   /* logo „remna” (Fraunces): kształt z wordmark.svg, kolor z CSS; scripts/make_wordmark.py */
+  display: inline-block; height: 19px; aspect-ratio: 5943 / 986; font-size: 0; color: transparent;
+  background: var(--accent); -webkit-mask: url(wordmark.svg) center / contain no-repeat; mask: url(wordmark.svg) center / contain no-repeat;
+}
 .tagline { color: var(--muted); font-size: 13px; }
 
 .searchbar {
