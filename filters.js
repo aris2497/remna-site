@@ -597,6 +597,16 @@
     return ids.length ? Array.from(new Set(ids)).sort() : ['__none__'];
   }
 
+  /** Usuwa z filtrów sklepy i kraje, których już nie ma (sklep wstrzymany albo usunięty). Bez tego zapamiętany
+   *  stary sklep zawęża wyniki do zera, a w arkuszu nie da się go odznaczyć, bo nie ma go na liście. */
+  function pruneShops(f, shopsByCountry, shopIds) {
+    const known = new Set(shopIds);
+    const shops = f.shops.filter((id) => known.has(id));
+    const countries = f.countries.filter((c) => (shopsByCountry[c] || []).length > 0);
+    if (shops.length === f.shops.length && countries.length === f.countries.length) return f;
+    return Object.assign({}, f, { shops, countries });
+  }
+
   function countryOfShop(id, shopsByCountry) {
     return Object.keys(shopsByCountry).find((c) => (shopsByCountry[c] || []).includes(id)) || null;
   }
@@ -1003,7 +1013,7 @@
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
     defaultFilters, normalizeFilters, countActive, filtersKey, searchWords, tsQuery, termGroup, titleMatches,
     restParams, unknownFields, pickImage, shopUrl, extractFilters, textQuery, applySearchText, dropOffFilterWords,
-    maxTypos, editDistance, makeSpeller, titleWordCounts, toQueryString, allowedShops, toggleCountry, toggleShop, matchLocal, sortLocal,
+    maxTypos, editDistance, makeSpeller, titleWordCounts, toQueryString, allowedShops, pruneShops, toggleCountry, toggleShop, matchLocal, sortLocal,
     money, priceParts, compositionText, imageUrl, displayTitle, filtersToParams, filtersFromParams,
     makeFavorites, makeAlerts, describeFilters, MAX_ALERTS,
     liveCheckUrl, readLiveCheck,

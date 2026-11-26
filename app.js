@@ -1015,6 +1015,16 @@
   });
 
   // --- Odświeżanie (pociągnij listę w dół) ------------------------------------------
+  /** Sklep z zapamiętanych filtrów (albo z linku) mógł zostać wstrzymany lub usunięty: wtedy wracamy do „Dowolny sklep”. */
+  function pruneGoneShops() {
+    if (!source.shops.length) return;   // lista sklepów się nie wczytała: nie ruszamy wyboru
+    const f = R.pruneShops(state.filters, source.shopsByCountry, source.shops.map((s) => s.id));
+    if (f === state.filters) return;
+    state.filters = f;
+    saveFilters();
+    renderFilterBadge();
+  }
+
   let lastRefresh = Date.now();
   let refreshing = false;
   async function refreshAll(withToast) {
@@ -1023,6 +1033,7 @@
     try {
       await source.init();
       renderModeBanner();
+      pruneGoneShops();
       await runSearch(true);
       checkAlerts();
       lastRefresh = Date.now();
@@ -1111,6 +1122,7 @@
       const fromUrl = R.filtersFromParams(params);
       if (fromUrl) { state.filters = fromUrl; $('#q').value = fromUrl.q || ''; state.typed = R.extractFilters(fromUrl.q, true); renderQuick(); renderFilterBadge(); $('#sort').value = fromUrl.sort; }
     }
+    pruneGoneShops();
     renderActive();
     if (WEB) {
       const params = new URLSearchParams(location.search);
