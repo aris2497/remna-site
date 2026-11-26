@@ -239,10 +239,10 @@
       return demo.products.filter((p) => set.has(p.id));
     }
 
-    /** Pełne dane jednej oferty (z opisem). */
+    /** Pełne dane jednej oferty (bez opisu sklepu: nie pokazujemy go, to tekst sklepu). */
     async function details(id) {
       if (mode === 'live') {
-        const qs = 'select=*&id=eq.' + encodeURIComponent(id);
+        const qs = 'select=' + encodeURIComponent(R.LIST_FIELDS + ',removed_at') + '&id=eq.' + encodeURIComponent(id);
         const { body } = await getJson('/products?' + qs);
         return body[0] || null;
       }

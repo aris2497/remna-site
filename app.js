@@ -540,7 +540,7 @@
         <p class="live" id="detail-live" role="status" hidden></p>
         <div class="price-box">${priceHtml}</div>
         <dl class="specs">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
-        ${p.description ? `<h2 class="desc-title">${esc(t('detail.description'))}</h2><div class="desc">${esc(p.description.slice(0, 1800))}${p.description.length > 1800 ? '…' : ''}</div>` : ''}
+        ${''/* opisu sklepu nie pokazujemy: to tekst sklepu (prawo autorskie); pełny opis jest pod „View in shop” */}
         <p class="open-note">${esc(t('detail.openNote'))}</p>
       </div>`;
     $('#detail-open').href = R.shopUrl(p.url, N.isNative ? 'android' : 'web');
