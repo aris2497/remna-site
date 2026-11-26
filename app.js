@@ -204,6 +204,22 @@
     }
     for (const id of f.fibers) chips.push(['fibers', id, esc(fiberName(id))]);
     if (f.pattern) chips.push(['pattern', f.pattern, esc(filterValueName('pattern', f.pattern))]);
+    // Pozostałe filtry z arkusza: widać, co zawęża wyniki, bez otwierania arkusza (te same podpisy co w arkuszu)
+    if (f.kind !== 'all') chips.push(['kind', f.kind, esc(t('filters.kind.' + f.kind))]);
+    if (f.purity) chips.push(['purity', '', esc(f.purity === 100 ? t('filters.purity100') : t('filters.purityMin', f.purity))]);
+    if (f.noSynthetic) chips.push(['noSynthetic', '', esc(t('filters.noSynthetic'))]);
+    if (f.maxPrice) chips.push(['maxPrice', '', esc(t('filters.upTo', f.maxPrice))]);
+    if (f.weightMin != null || f.weightMax != null) {
+      const preset = R.weightPreset(f.weightMin, f.weightMax);
+      chips.push(['weight', '', esc(preset ? t('filters.weight.' + preset) : R.weightLabel(f.weightMin, f.weightMax))]);
+    }
+    if (f.minWidth) chips.push(['minWidth', '', esc(t('filters.fromWidth', f.minWidth))]);
+    if (f.minStock) chips.push(['minStock', '', esc(t('filters.fromStock', f.minStock))]);
+    if (f.stockKnown) chips.push(['stockKnown', '', esc(t('filters.stockKnown'))]);
+    if (f.newDays) chips.push(['newDays', '', esc(t('filters.new' + f.newDays))]);
+    for (const c of f.countries) chips.push(['countries', c, esc(countryName(c))]);
+    const shopName = Object.fromEntries(source.shops.map((s) => [s.id, s.name]));
+    for (const id of f.shops) chips.push(['shops', id, esc(shopName[id] || id)]);
     $('#active-filters').innerHTML = chips.map(([field, id, label]) =>
       `<button type="button" class="chip on" data-remove="${field}:${esc(id)}" aria-label="${esc(t('filters.remove', label.replace(/<[^>]+>/g, '')))}">${label}<span class="x" aria-hidden="true">✕</span></button>`).join('');
     $('#active-filters').hidden = !chips.length;
@@ -212,10 +228,14 @@
   $('#active-filters').addEventListener('click', (e) => {
     const b = e.target.closest('[data-remove]');
     if (!b) return;
-    const [field, id] = b.dataset.remove.split(':');
+    const i = b.dataset.remove.indexOf(':');
+    const field = b.dataset.remove.slice(0, i), id = b.dataset.remove.slice(i + 1);
     const f = Object.assign({}, state.filters);
-    if (field === 'pattern') f.pattern = null;
-    else f[field] = f[field].filter((x) => x !== id);
+    if (field === 'kind') f.kind = 'all';
+    else if (field === 'weight') { f.weightMin = null; f.weightMax = null; }
+    else if (field === 'noSynthetic' || field === 'stockKnown') f[field] = false;
+    else if (Array.isArray(f[field])) f[field] = f[field].filter((x) => x !== id);
+    else f[field] = null;   // pattern, purity, maxPrice, minWidth, minStock, newDays
     setFilters(f);
   });
   function clearAllFilters() {
