@@ -104,6 +104,11 @@
         else tiers.push({ known, title: null });
       }
       let counts = page ? tierCounts.get(key) : null;
+      // Pierwsza strona: lista pierwszej części pobierana RÓWNOCZEŚNIE z licznikami (nie jedno po drugim).
+      // Błąd tej listy łapiemy tu; wtedy niżej pobierze się ona jeszcze raz zwykłym zapytaniem.
+      const first = !counts && !page
+        ? getJson('/products?' + R.toQueryString(params(tiers[0].known, tiers[0].title, 0, R.PAGE_SIZE))).catch(() => null)
+        : null;
       if (!counts) {
         const raw = await Promise.all(knownTiers.flatMap((k) => byTitle ? [countOf(k, null), countOf(k, 'only')] : [countOf(k, null)]));
         if (raw.some((c) => c == null)) { const e = new Error('no count'); e.status = 'count'; throw e; }
@@ -120,7 +125,9 @@
       for (let i = 0; i < tiers.length && items.length < R.PAGE_SIZE; i++) {
         if (skip >= counts[i]) { skip -= counts[i]; continue; }
         const need = Math.min(R.PAGE_SIZE - items.length, counts[i] - skip);
-        const { body } = await getJson('/products?' + R.toQueryString(params(tiers[i].known, tiers[i].title, skip, need)));
+        const pre = i === 0 && skip === 0 && first ? await first : null;
+        const { body } = pre ? { body: pre.body.slice(0, need) }
+          : await getJson('/products?' + R.toQueryString(params(tiers[i].known, tiers[i].title, skip, need)));
         items.push(...body.map((p) => (tiers[i].known === 'missing' ? Object.assign(p, { _unknown: true }) : p)));
         skip = 0;
       }
@@ -186,7 +193,11 @@
         }
       }
       if (mode === 'live') {
-        const qs = R.toQueryString(R.restParams(filters, { page: page || 0, shopsByCountry, since }));
+        // Gdy podział na części się nie udał (np. liczniki przekroczyły limit czasu), pokazujemy TYLKO oferty,
+        // o których wiemy, że pasują. Wcześniej szły tu też oferty bez danej cechy, wymieszane i bez podpisu
+        // (szukając lnu widać było wełnę).
+        const sure = wantTiered && R.unknownFields(nf).length ? { known: 'only' } : {};
+        const qs = R.toQueryString(R.restParams(filters, Object.assign({ page: page || 0, shopsByCountry, since }, sure)));
         try {
           const { body, headers: h } = await getJson('/products?' + qs, { Prefer: 'count=exact' });
           return { items: body, total: parseTotal(h), approx: false };
