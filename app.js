@@ -17,6 +17,9 @@
   const statsAllowed = () => !dnt && storage.getItem('remna-statystyki') !== 'nie';
   source.setStatsCheck(statsAllowed);
   const alerts = R.makeAlerts(storage);
+  const recent = R.makeRecent(storage);              // ostatnie wyszukiwania (podpowiedzi pod polem)
+  const searchMemory = R.makeSearchMemory(storage);  // „Szukasz tego nie pierwszy raz. Zapisać jako alert?”
+  const wide = window.matchMedia ? window.matchMedia('(min-width: 960px)') : { matches: false, addEventListener() {} };
 
   const state = {
     filters: loadFilters(),
@@ -30,6 +33,8 @@
     view: 'search',
     draft: null,
     detailId: null,
+    sheetGroup: null,   // mały arkusz z jedną grupą filtrów (null = wszystkie)
+    editAlert: null,    // id alertu, którego wyszukiwanie właśnie zmieniamy
   };
 
   // --- Pomocnicze -----------------------------------------------------------
@@ -91,34 +96,38 @@
     $('#lang').value = I.getLang();
   }
 
-  // --- Szybkie filtry (chipy pod wyszukiwarką) --------------------------------
-  const QUICK_FIBERS = ['silk', 'wool', 'linen', 'cotton', 'viscose', 'cashmere'];
+  // --- Przyciski grup filtrów pod wyszukiwarką: Materiał ▾ Kolor ▾ Cena/m ▾ … ----------------
+  // Każdy otwiera mały arkusz z tą jedną grupą. Ustawiona grupa pokazuje wybór („Jedwab, Wełna”) i ✕ obok;
+  // ustawione stoją na początku, żeby było je widać bez przewijania.
+  const ROW_GROUPS = ['material', 'colors', 'price', 'stock', 'pattern', 'weight', 'width', 'shops', 'newDays'];
+  const CARET = '<svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>';
+  function groupSummary(f, group) {
+    const labels = activeChips(f).filter((c) => c.group === group).map((c) => c.text);
+    if (!labels.length) return '';
+    return labels.length > 2 ? labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2) : labels.join(', ');
+  }
   function renderQuick() {
     const f = state.filters;
-    const chips = [];
-    const plain = f.kind === 'all' && !f.fibers.length;
-    chips.push(`<button type="button" class="chip" data-quick="all" aria-pressed="${plain}">${esc(t('quick.all'))}</button>`);
-    for (const id of QUICK_FIBERS) {
-      chips.push(`<button type="button" class="chip" data-quick="fiber:${id}" aria-pressed="${f.fibers.includes(id)}">${esc(fiberName(id))}</button>`);
-    }
-    chips.push(`<button type="button" class="chip" data-quick="leather" aria-pressed="${f.kind === 'leather'}">${esc(t('filters.kind.leather'))}</button>`);
-    chips.push(`<button type="button" class="chip" data-quick="new" aria-pressed="${f.newDays === 7}">${esc(t('filters.new7'))}</button>`);
-    $('#quick').innerHTML = chips.join('');
+    const on = ROW_GROUPS.filter((g) => R.groupActive(f, g));
+    const off = ROW_GROUPS.filter((g) => !on.includes(g));
+    $('#quick').innerHTML = on.concat(off).map((g) => {
+      const active = on.includes(g);
+      const label = active ? groupSummary(f, g) : t('row.' + g);
+      const dot = g === 'colors' && active ? f.colors.slice(0, 3).map((id) => {
+        const c = R.COLORS.find((x) => x.id === id);
+        return c ? `<span class="dot" style="background:${c.hex}"></span>` : '';
+      }).join('') : '';
+      return `<span class="fchip${active ? ' on' : ''}"><button type="button" class="fchip-main" data-group="${g}" aria-haspopup="dialog">` +
+        `${dot}<span class="fchip-label">${esc(label)}</span>${CARET}</button>` +
+        (active ? `<button type="button" class="fchip-x" data-cleargroup="${g}" aria-label="${esc(t('filters.remove', label))}">✕</button>` : '') +
+        '</span>';
+    }).join('');
   }
   $('#quick').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-quick]');
-    if (!b) return;
-    const q = b.dataset.quick;
-    const f = Object.assign({}, state.filters);
-    if (q === 'all') { f.kind = 'all'; f.fibers = []; }
-    else if (q === 'leather') { f.kind = f.kind === 'leather' ? 'all' : 'leather'; }
-    else if (q === 'new') { f.newDays = f.newDays === 7 ? null : 7; }
-    else if (q.startsWith('fiber:')) {
-      const id = q.slice(6);
-      f.fibers = f.fibers.includes(id) ? f.fibers.filter((x) => x !== id) : f.fibers.concat(id);
-      if (f.kind === 'leather') f.kind = 'all';
-    }
-    setFilters(f);
+    const x = e.target.closest('[data-cleargroup]');
+    if (x) { setFilters(R.clearGroup(state.filters, x.dataset.cleargroup)); return; }
+    const b = e.target.closest('[data-group]');
+    if (b) openFilters(b.dataset.group);
   });
 
   function renderSort() {
@@ -140,9 +149,16 @@
     if (!o.keepSpell) state.spell = null;
     state.filters = n;
     saveFilters();
+    // Ktoś szuka: powitanie znika (i nie wraca). Zakończone wyszukiwanie (nie w trakcie pisania) trafia do ostatnich.
+    if (R.isSearch(n)) {
+      hideIntro();
+      if (!o.typing) { recent.add(n); searchMemory.bump(n); }
+    }
     renderQuick();
     renderFilterBadge();
     renderActive();
+    renderSide();
+    renderEditBanner();
     $('#sort').value = state.filters.sort;
     // Nowe wyniki zaczynają się od góry listy (inaczej po przewinięciu widać środek nowej listy).
     if (window.scrollY > 0) window.scrollTo(0, 0);
@@ -179,11 +195,12 @@
   $('#q').addEventListener('input', () => {
     $('#q-clear').hidden = !$('#q').value;
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => setFilters(filtersFromSearchBox(false), { fromBox: true }), 350);
+    qTimer = setTimeout(() => setFilters(filtersFromSearchBox(false), { fromBox: true, typing: true }), 350);
   });
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
     clearTimeout(qTimer);
+    hideSuggest();
     $('#q').blur();
     setFilters(filtersFromSearchBox(true), { fromBox: true });
   });
@@ -191,53 +208,132 @@
     $('#q').value = '';
     $('#q-clear').hidden = true;
     setFilters(filtersFromSearchBox(true, ''), { fromBox: true });
+    $('#q').focus();
   });
 
-  // --- Włączone filtry jako chipy z ✕ (kolor, materiał, wzór) i „Wyczyść wszystkie filtry” ----------
-  function renderActive() {
-    const f = state.filters;
+  // --- Podpowiedzi pod polem: ostatnie wyszukiwania (puste pole) i dokończenie słowa (w trakcie pisania) ---------
+  // Dokończenie pokazuje też, który filtr włączy (np. „jedwab → Materiał: Jedwab”).
+  let suggestItems = [];   // [{type: 'recent'|'term', filters?, text?}]
+  let suggestActive = -1;
+  const CLOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>';
+  function renderSuggest() {
+    const el = $('#suggest');
+    const text = $('#q').value;
+    const lang = I.getLang();
+    const items = [];
+    const html = [];
+    if (!text.trim()) {
+      const list = recent.list().slice(0, 6);
+      if (list.length) {
+        html.push(`<div class="sg-head"><span>${esc(t('search.recent'))}</span><button type="button" class="text-btn small" data-sg-clear>${esc(t('search.clearRecent'))}</button></div>`);
+        for (const r of list) {
+          html.push(`<div class="sg-row"><button type="button" class="sg-item" role="option" data-sg="${items.length}">${CLOCK}<span>${esc(R.describeFilters(r.filters, lang, shopsById()))}</span></button>` +
+            `<button type="button" class="icon-btn sg-del" data-sg-del="${items.length}" aria-label="${esc(t('search.removeRecent'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>`);
+          items.push({ type: 'recent', filters: r.filters });
+        }
+      }
+    } else {
+      const terms = R.suggest(text, lang, 6);
+      if (terms.length) {
+        html.push(`<div class="sg-head"><span>${esc(t('search.suggestions'))}</span></div>`);
+        for (const s of terms) {
+          const hint = s.kind ? filterValueName(s.kind, s.id) : '';
+          html.push(`<div class="sg-row"><button type="button" class="sg-item" role="option" data-sg="${items.length}"><span>${esc(s.text)}</span>` +
+            (hint ? `<span class="sg-hint">${esc(hint)}</span>` : '') + '</button></div>');
+          items.push({ type: 'term', text: s.text });
+        }
+      }
+    }
+    suggestItems = items;
+    suggestActive = -1;
+    el.innerHTML = html.join('');
+    el.hidden = !items.length;
+  }
+  function hideSuggest() { $('#suggest').hidden = true; suggestActive = -1; }
+  function pickSuggest(i) {
+    const it = suggestItems[i];
+    if (!it) return;
+    hideSuggest();
+    clearTimeout(qTimer);
+    if (it.type === 'recent') {
+      $('#q').value = it.filters.q || '';
+      $('#q-clear').hidden = !it.filters.q;
+      $('#q').blur();
+      setFilters(Object.assign({}, it.filters));
+    } else {
+      $('#q').value = it.text + ' ';
+      $('#q-clear').hidden = false;
+      setFilters(filtersFromSearchBox(false), { fromBox: true });
+      $('#q').focus();
+    }
+  }
+  $('#q').addEventListener('focus', renderSuggest);
+  $('#q').addEventListener('input', renderSuggest);
+  $('#q').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('#q')) hideSuggest(); }, 150));
+  $('#q').addEventListener('keydown', (e) => {
+    if ($('#suggest').hidden || !suggestItems.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = suggestItems.length;
+      suggestActive = e.key === 'ArrowDown' ? (suggestActive + 1) % n : (suggestActive - 1 + n) % n;
+      $('#suggest').querySelectorAll('.sg-item').forEach((b, i) => b.setAttribute('aria-selected', String(i === suggestActive)));
+    } else if (e.key === 'Enter' && suggestActive >= 0) {
+      e.preventDefault();
+      pickSuggest(suggestActive);
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      hideSuggest();
+    }
+  });
+  // mousedown zamiast click: inaczej pole traci fokus i lista znika, zanim kliknięcie dojdzie
+  $('#suggest').addEventListener('mousedown', (e) => e.preventDefault());
+  $('#suggest').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-sg-del]');
+    if (del) { recent.remove(suggestItems[Number(del.dataset.sgDel)].filters); renderSuggest(); return; }
+    if (e.target.closest('[data-sg-clear]')) { recent.clear(); renderSuggest(); return; }
+    const b = e.target.closest('[data-sg]');
+    if (b) pickSuggest(Number(b.dataset.sg));
+  });
+
+  // --- Włączone filtry: lista do przycisków grup i do „usuń jeden filtr” przy braku wyników ----------
+  /** [{group, field, id, text}] — każdy ustawiony filtr z podpisem jak w arkuszu. */
+  function activeChips(f) {
     const chips = [];
     const lang = I.getLang();
-    for (const id of f.colors) {
-      const c = R.COLORS.find((x) => x.id === id);
-      if (c) chips.push(['colors', id, `<span class="dot" style="background:${c.hex}"></span>${esc(c[lang] || c.en)}`]);
-    }
-    for (const id of f.fibers) chips.push(['fibers', id, esc(fiberName(id))]);
-    if (f.pattern) chips.push(['pattern', f.pattern, esc(filterValueName('pattern', f.pattern))]);
-    // Pozostałe filtry z arkusza: widać, co zawęża wyniki, bez otwierania arkusza (te same podpisy co w arkuszu)
-    if (f.kind !== 'all') chips.push(['kind', f.kind, esc(t('filters.kind.' + f.kind))]);
-    if (f.purity) chips.push(['purity', '', esc(f.purity === 100 ? t('filters.purity100') : t('filters.purityMin', f.purity))]);
-    if (f.noSynthetic) chips.push(['noSynthetic', '', esc(t('filters.noSynthetic'))]);
-    if (f.maxPrice) chips.push(['maxPrice', '', esc(t('filters.upTo', f.maxPrice))]);
+    const add = (group, field, id, text) => chips.push({ group, field, id, text });
+    if (f.kind !== 'all') add('material', 'kind', f.kind, t('filters.kind.' + f.kind));
+    for (const id of f.fibers) add('material', 'fibers', id, fiberName(id));
+    if (f.purity) add('material', 'purity', '', f.purity === 100 ? t('filters.purity100') : t('filters.purityMin', f.purity));
+    if (f.noSynthetic) add('material', 'noSynthetic', '', t('filters.noSynthetic'));
+    for (const id of f.colors) { const c = R.COLORS.find((x) => x.id === id); if (c) add('colors', 'colors', id, c[lang] || c.en); }
+    if (f.pattern) add('pattern', 'pattern', f.pattern, filterValueName('pattern', f.pattern));
+    if (f.maxPrice) add('price', 'maxPrice', '', t('filters.upTo', f.maxPrice));
+    if (f.minStock) add('stock', 'minStock', '', t('filters.fromStock', f.minStock));
+    if (f.stockKnown) add('stock', 'stockKnown', '', t('filters.stockKnown'));
     if (f.weightMin != null || f.weightMax != null) {
       const preset = R.weightPreset(f.weightMin, f.weightMax);
-      chips.push(['weight', '', esc(preset ? t('filters.weight.' + preset) : R.weightLabel(f.weightMin, f.weightMax))]);
+      add('weight', 'weight', '', preset ? t('filters.weight.' + preset) : R.weightLabel(f.weightMin, f.weightMax));
     }
-    if (f.minWidth) chips.push(['minWidth', '', esc(t('filters.fromWidth', f.minWidth))]);
-    if (f.minStock) chips.push(['minStock', '', esc(t('filters.fromStock', f.minStock))]);
-    if (f.stockKnown) chips.push(['stockKnown', '', esc(t('filters.stockKnown'))]);
-    if (f.newDays) chips.push(['newDays', '', esc(t('filters.new' + f.newDays))]);
-    for (const c of f.countries) chips.push(['countries', c, esc(countryName(c))]);
+    if (f.minWidth) add('width', 'minWidth', '', t('filters.fromWidth', f.minWidth));
+    for (const c of f.countries) add('shops', 'countries', c, countryName(c));
     const shopName = Object.fromEntries(source.shops.map((s) => [s.id, s.name]));
-    for (const id of f.shops) chips.push(['shops', id, esc(shopName[id] || id)]);
-    $('#active-filters').innerHTML = chips.map(([field, id, label]) =>
-      `<button type="button" class="chip on" data-remove="${field}:${esc(id)}" aria-label="${esc(t('filters.remove', label.replace(/<[^>]+>/g, '')))}">${label}<span class="x" aria-hidden="true">✕</span></button>`).join('');
-    $('#active-filters').hidden = !chips.length;
-    $('#clear-filters').hidden = !R.countActive(f);
+    for (const id of f.shops) add('shops', 'shops', id, shopName[id] || id);
+    if (f.newDays) add('newDays', 'newDays', '', t('filters.new' + f.newDays));
+    return chips;
   }
-  $('#active-filters').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-remove]');
-    if (!b) return;
-    const i = b.dataset.remove.indexOf(':');
-    const field = b.dataset.remove.slice(0, i), id = b.dataset.remove.slice(i + 1);
-    const f = Object.assign({}, state.filters);
-    if (field === 'kind') f.kind = 'all';
-    else if (field === 'weight') { f.weightMin = null; f.weightMax = null; }
-    else if (field === 'noSynthetic' || field === 'stockKnown') f[field] = false;
-    else if (Array.isArray(f[field])) f[field] = f[field].filter((x) => x !== id);
-    else f[field] = null;   // pattern, purity, maxPrice, minWidth, minStock, newDays
-    setFilters(f);
-  });
+  /** Filtry bez jednego z nich (z activeChips). */
+  function withoutChip(filters, c) {
+    const f = Object.assign({}, filters);
+    if (c.field === 'kind') f.kind = 'all';
+    else if (c.field === 'weight') { f.weightMin = null; f.weightMax = null; }
+    else if (c.field === 'noSynthetic' || c.field === 'stockKnown') f[c.field] = false;
+    else if (Array.isArray(f[c.field])) f[c.field] = f[c.field].filter((x) => x !== c.id);
+    else f[c.field] = null;   // pattern, purity, maxPrice, minWidth, minStock, newDays
+    return R.normalizeFilters(f);
+  }
+  function renderActive() {
+    $('#clear-filters').hidden = !R.countActive(state.filters);
+  }
   function clearAllFilters() {
     setFilters(Object.assign(R.defaultFilters(), { q: state.filters.q, sort: state.filters.sort }));
   }
@@ -325,11 +421,12 @@
         const spelled = checkSpelling(seq, res).catch(() => {});
         if (!res.items.length) await spelled;   // bez wyników: zamiast pustej strony od razu poprawione wyniki
       }
+      if (reset && seq === state.seq) maybeNudge();
     } catch (e) {
       if (seq !== state.seq) return;
       state.error = true;
     } finally {
-      if (seq === state.seq) { state.loading = false; renderResults(); }
+      if (seq === state.seq) { state.loading = false; renderResults(); if (reset) loadSideCounts(); }
     }
   }
 
@@ -340,6 +437,9 @@
     if (p.price_unit === 'piece' && p.piece_length_m && Math.abs(s - Number(p.piece_length_m)) < 0.01) return '';
     return t('card.stock', s);
   }
+  // Mało metrów (do 3 m): napis na zdjęciu, bo przy deadstocku ilość decyduje, czy projekt się zmieści
+  const LOW_STOCK_M = 3;
+  function lowStock(p) { const st = stockText(p); return st && Number(p.stock_m) <= LOW_STOCK_M ? st : ''; }
   function labelLine(p) {
     const bits = [];
     const comp = R.compositionText(p, I.getLang());
@@ -347,28 +447,38 @@
     if (p.width_cm) bits.push(Math.round(p.width_cm) + ' cm');
     if (p.weight_gsm) bits.push(Math.round(p.weight_gsm) + ' g/m²');
     const st = stockText(p);
-    if (st) bits.push(st);
+    if (st && !lowStock(p)) bits.push(st);
     return bits.join(' · ');
+  }
+  /** Cena na karcie: za metr w euro (sklepy z innych krajów: ≈ przeliczona, oryginał w szczegółach);
+   *  bez znanej jednostki: „Cena w sklepie” bez liczby (mała liczba za 10 cm myliła się z ceną za metr). */
+  function cardPrice(p) {
+    const pr = R.priceParts(p, I.getLang());
+    let price;
+    if (pr.unit === 'per_m') {
+      const main = pr.eur ? '≈ ' + pr.eur : pr.main;
+      price = `${esc(main)}<small>${esc(t('card.perM'))}</small>` + (pr.piece ? ` <small>· ${esc(t('card.piece', pr.piece))}</small>` : '');
+    } else if (pr.unit === 'leather') price = `${esc(pr.main)} <small>${esc(t('card.priceUnknown'))}</small>`;
+    else price = `<span class="see-shop">${esc(t('card.priceSeeShop'))}</span>`;
+    if (pr.plusVat && pr.unit === 'per_m') price += ` <small class="vat">${esc(t('price.plusVat'))}</small>`;
+    return price;
   }
 
   function cardHtml(p, opts) {
     const o = opts || {};
-    const lang = I.getLang();
     const shop = source.shopById(p.shop_id);
-    const pr = R.priceParts(p, lang);
-    let price;
-    if (pr.unit === 'per_m') price = `${esc(pr.main)}<small>${esc(t('card.perM'))}</small>` + (pr.piece ? ` <small>· ${esc(t('card.piece', pr.piece))}</small>` : '');
-    else price = `${esc(pr.main)} <small>${esc(t('card.priceUnknown'))}</small>`;
-    if (pr.plusVat) price += ` <small class="vat">${esc(t('price.plusVat'))}</small>`;
+    const price = cardPrice(p);
     // w wynikach przy filtrze koloru: zdjęcie wariantu w tym kolorze (ulubione: zdjęcie główne)
     const src = R.pickImage(p, o.favorites ? null : state.filters);
     const img = src
       ? `<img src="${esc(R.imageUrl(src, 480))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
       : `<span class="noimg">Remna</span>`;
-    const gone = (o.gone || liveGone(p.id)) ? `<span class="flag gone">${esc(t('fav.gone'))}</span>` : (isNew(p) ? `<span class="flag">${esc(t('card.new'))}</span>` : '');
+    const isGone = o.gone || liveGone(p.id);
+    const gone = isGone ? `<span class="flag gone">${esc(t('fav.gone'))}</span>` : (isNew(p) ? `<span class="flag">${esc(t('card.new'))}</span>` : '');
+    const low = !isGone && p.kind !== 'leather' ? lowStock(p) : '';
     const label = labelLine(p);
     return `<article class="card" data-id="${esc(p.id)}" tabindex="0" aria-label="${esc(R.displayTitle(p.title))}">
-      <div class="ph">${img}${gone}
+      <div class="ph">${img}${gone}${low ? `<span class="flag low">${esc(low)}</span>` : ''}
         <button type="button" class="fav" data-fav="${esc(p.id)}" aria-pressed="${favorites.has(p.id)}" aria-label="${esc(t('detail.save'))}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
         </button>
@@ -402,15 +512,21 @@
       return;
     }
     if (!state.items.length) {
-      // Puste wyniki: z filtrami → przycisk „Wyczyść filtry”; sam tekst → sprawdź pisownię
+      // Puste wyniki: z filtrami → „usuń jeden filtr” (z liczbą wyników bez niego); zawsze: „Daj znać, gdy się pojawi”
+      const alertCta = `<div class="empty-alert"><button type="button" class="primary-btn" id="empty-alert">` +
+        `${BELL}<span>${esc(t('results.alertCta'))}</span></button><p>${esc(t('results.alertCtaHint'))}</p></div>`;
       if (R.countActive(state.filters)) {
-        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyFilters'))}</strong><button type="button" class="ghost-btn" id="empty-clear">${esc(t('results.clearFilters'))}</button></div>`;
+        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyFilters'))}</strong>` +
+          `<div class="relax" id="relax" hidden><p>${esc(t('results.relaxLead'))}</p><div class="relax-list"></div></div>` +
+          `<button type="button" class="ghost-btn" id="empty-clear">${esc(t('results.clearFilters'))}</button>${alertCta}</div>`;
         $('#empty-clear').onclick = clearAllFilters;
+        loadRelax(state.seq);
       } else if (state.filters.q) {
-        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyQuery', state.filters.q))}</strong>${esc(t('results.emptyQueryHint'))}</div>`;
+        el.innerHTML = `<div class="empty"><strong>${esc(t('results.emptyQuery', state.filters.q))}</strong>${esc(t('results.emptyQueryHint'))}${alertCta}</div>`;
       } else {
         el.innerHTML = `<div class="empty"><strong>${esc(t('results.empty'))}</strong>${esc(t('results.emptyHint'))}</div>`;
       }
+      if ($('#empty-alert')) $('#empty-alert').onclick = saveAlert;
       $('#result-count').textContent = t('results.count', 0);
       $('#load-more').hidden = true;
       return;
@@ -420,6 +536,24 @@
       ? `<p class="unknown-divider">${esc(t('results.unknownDivider'))}</p>` : '') + cardHtml(p)).join('') + (state.loading ? skeletons(2) : '');
     $('#result-count').textContent = state.total == null ? '' : (state.approx ? t('results.countApprox', state.total) : t('results.count', state.total));
     $('#load-more').hidden = state.loading || !state.hasMore;
+  }
+
+  const BELL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>';
+  /** Brak wyników: dla każdego ustawionego filtra liczba ofert bez niego (najwięcej na górze, bez zer). */
+  async function loadRelax(seq) {
+    const f = state.filters;
+    const chips = activeChips(f).slice(0, 8);
+    const counts = await Promise.all(chips.map((c) => source.countNew(withoutChip(f, c), null).catch(() => 0)));
+    if (seq !== state.seq || !$('#relax')) return;
+    const rows = chips.map((c, i) => ({ c, n: counts[i] })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
+    if (!rows.length) return;
+    $('#relax .relax-list').innerHTML = rows.map(({ c, n }, i) =>
+      `<button type="button" class="relax-item" data-relax="${i}"><span>✕ ${esc(c.text)}</span><em>${esc(t('results.count', n))}</em></button>`).join('');
+    $('#relax').hidden = false;
+    $('#relax').onclick = (e) => {
+      const b = e.target.closest('[data-relax]');
+      if (b) setFilters(withoutChip(f, rows[Number(b.dataset.relax)].c));
+    };
   }
 
   $('#load-more').addEventListener('click', () => { state.page += 1; runSearch(false); });
@@ -472,6 +606,7 @@
     el.hidden = false;
     el.className = 'live live-' + s;
     el.textContent = t('live.' + s);
+    placeRelated(id);
   }
   async function verifyLive(p) {
     const id = p.id;
@@ -500,7 +635,9 @@
     if (WEB && !o.fromHistory) {
       try { history[o.replace ? 'replaceState' : 'pushState']({ o: id }, '', pageUrl({ o: id })); } catch (e) { /* bez historii */ }
     }
-    const quick = state.items.find((x) => x.id === id) || favorites.list().find((x) => x.id === id);
+    hideIntro();
+    if (R.isSearch(state.filters)) recent.add(state.filters);   // wyszukiwanie, z którego coś otwarto, warto pamiętać
+    const quick = state.items.find((x) => x.id === id) || favorites.list().find((x) => x.id === id) || relatedItems.get(id);
     source.track('detail', { product_id: id, shop_id: id.split(':')[0] });
     state.detailId = id;
     detailProduct = quick || null;
@@ -562,12 +699,52 @@
         <dl class="specs">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
         ${''/* opisu sklepu nie pokazujemy: to tekst sklepu (prawo autorskie); pełny opis jest pod „View in shop” */}
         <p class="open-note">${esc(t('detail.openNote'))}</p>
+        <div class="related" id="detail-related"></div>
       </div>`;
+    loadRelated(p);
     $('#detail-open').href = R.shopUrl(p.url, N.isNative ? 'android' : 'web');
     $('#detail-fav').setAttribute('aria-pressed', favorites.has(p.id));
     $('#detail-body').scrollTop = 0;
     renderLive(p.id);
   }
+  // Pod ofertą: podobne tkaniny i więcej z tego sklepu (gdy oferta wyprzedana, podobne idą na górę)
+  const relatedCache = new Map();   // id oferty -> Promise<{similar, shop}>
+  const relatedItems = new Map();   // id -> oferta z pasków (żeby otworzyć ją od razu)
+  function loadRelated(p) {
+    if (!relatedCache.has(p.id)) {
+      relatedCache.set(p.id, Promise.all([
+        source.similar(p).catch(() => []),
+        source.fromShop(p).catch(() => []),
+      ]).then(([similar, shop]) => ({ similar, shop })));
+      if (relatedCache.size > 30) relatedCache.delete(relatedCache.keys().next().value);
+    }
+    relatedCache.get(p.id).then((r) => {
+      if (state.detailId !== p.id || !$('#detail-related')) return;
+      const shop = source.shopById(p.shop_id);
+      const strip = (title, list) => (list.length ? `<section class="strip"><h2>${esc(title)}</h2><div class="strip-row">` +
+        list.map((x) => {
+          relatedItems.set(x.id, x);
+          const src = R.pickImage(x, null);
+          return `<button type="button" class="rel-card" data-open="${esc(x.id)}">` +
+            `<span class="rel-ph">${src ? `<img src="${esc(R.imageUrl(src, 240))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>` +
+            `<span class="rel-price">${cardPrice(x)}</span><span class="rel-title">${esc(R.displayTitle(x.title))}</span></button>`;
+        }).join('') + '</div></section>' : '');
+      $('#detail-related').innerHTML = strip(t('detail.similar'), r.similar) + strip(t('detail.moreFrom', shop ? shop.name : p.shop_id), r.shop);
+      placeRelated(p.id);
+    });
+  }
+  /** Wyprzedana albo zniknęła: podobne tkaniny zaraz pod nazwą, zamiast na dole. */
+  function placeRelated(id) {
+    const rel = $('#detail-related');
+    const box = document.querySelector('#detail-body .price-box');
+    if (!rel || !box) return;
+    if (liveGone(id)) box.parentNode.insertBefore(rel, box);
+  }
+  $('#detail-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-open]');
+    if (b) openDetail(b.dataset.open, { replace: true });
+  });
+
   function closeDetail(opts) {
     const wasOpen = !$('#detail').hidden;
     $('#detail').hidden = true;
@@ -608,8 +785,11 @@
   });
 
   // --- Arkusz filtrów -----------------------------------------------------------
-  function chip(attr, value, label, pressed, extra, disabled) {
-    return `<button type="button" class="chip" data-${attr}="${esc(value)}" aria-pressed="${pressed}"${disabled ? ' disabled' : ''}>${extra || ''}${esc(label)}</button>`;
+  /** n = liczba ofert z tą opcją (szara opcja przy 0, chyba że wybrana); null = bez liczby. */
+  function chip(attr, value, label, pressed, extra, disabled, n) {
+    const off = disabled || (n === 0 && !pressed);
+    const count = n != null ? `<span class="n">${esc(I.fmtNum(n, I.getLang()))}</span>` : '';
+    return `<button type="button" class="chip" data-${attr}="${esc(value)}" aria-pressed="${pressed}"${off ? ' disabled' : ''}>${extra || ''}${esc(label)}${count}</button>`;
   }
   // Arkusz filtrów: najczęściej używane filtry na górze, objaśnienia schowane pod (i), długie listy skrócone („+ N więcej”).
   const FIBER_TOP = ['silk', 'wool', 'linen', 'cotton', 'viscose', 'cashmere', 'polyester'];
@@ -644,168 +824,157 @@
     return shown.map(render).join('') + more;
   }
 
-  // Suwak gramatury: przesuwanie nie przerysowuje arkusza (żeby nie zgubić uchwytu), tylko podpis i wypełnienie
+  // Suwak gramatury: przesuwanie nie przerysowuje grup (żeby nie zgubić uchwytu), tylko podpis i wypełnienie.
+  // root = arkusz albo kolumna z filtrami (suwak może być w obu naraz, więc bez id).
   let weightCustomOpen = false;
-  function syncWeightSlider(changed) {
-    const lo = $('#weight-min'), hi = $('#weight-max');
-    if (!lo || !hi) return;
+  function syncWeightSlider(root, changed) {
+    const lo = root.querySelector('.w-min'), hi = root.querySelector('.w-max');
+    if (!lo || !hi) return null;
     const W_MAX = R.WEIGHT_SLIDER_MAX, STEP = R.WEIGHT_STEP;
     let a = Number(lo.value), b = Number(hi.value);
     if (a > b - STEP) { if (changed === lo) a = b - STEP; else b = a + STEP; }
     a = Math.max(0, a); b = Math.min(W_MAX, b);
     lo.value = a; hi.value = b;
-    $('#weight-fill').style.left = (a / W_MAX * 100) + '%';
-    $('#weight-fill').style.right = ((W_MAX - b) / W_MAX * 100) + '%';
+    root.querySelector('.w-fill').style.left = (a / W_MAX * 100) + '%';
+    root.querySelector('.w-fill').style.right = ((W_MAX - b) / W_MAX * 100) + '%';
     const min = a > 0 ? a : null, max = b < W_MAX ? b : null;
-    $('#weight-label').textContent = R.weightLabel(min, max) || ('0–' + W_MAX + '+ g/m²');
+    root.querySelector('.w-label').textContent = R.weightLabel(min, max) || ('0–' + W_MAX + '+ g/m²');
     // na wierzchu ten uchwyt, którym ostatnio ruszano (gdy oba są w jednym miejscu)
     lo.style.zIndex = changed === lo ? 3 : 2; hi.style.zIndex = changed === hi ? 3 : 2;
     return { min, max };
   }
-  $('#filters-body').addEventListener('input', (e) => {
-    if (e.target.id !== 'weight-min' && e.target.id !== 'weight-max') return;
-    const r = syncWeightSlider(e.target);
-    state.draft.weightMin = r.min;
-    state.draft.weightMax = r.max;
-    updateApplyCount();
-  });
 
-  function renderFilterSheet() {
-    const f = state.draft;
+  /**
+   * Grupy filtrów jako HTML. only = jedna grupa (mały arkusz) albo null (wszystkie).
+   * counts = wynik source.facetCounts (liczby przy opcjach; 0 = opcja wyszarzona) albo null.
+   */
+  function filterGroupsHtml(f, only, counts) {
     const lang = I.getLang();
-    const countries = Object.keys(source.shopsByCountry).sort((a, b) => countryName(a).localeCompare(countryName(b)));
+    const show = (g) => !only || only === g;
+    const cnt = (facet, key) => (counts && counts[facet] ? (counts[facet][key] || 0) : null);
     const html = [];
-    html.push(`<div class="fgroup">${groupHead('filters.kind')}<div class="chips">` +
-      ['all', 'fabric', 'leather'].map((k) => chip('kind', k, t('filters.kind.' + k), f.kind === k)).join('') + '</div></div>');
-    // Materiał
-    const fibers = R.FIBERS.filter((x) => x.id !== 'leather');
-    html.push(`<div class="fgroup">${groupHead('filters.fibers', { selectAll: { field: 'fibers', ids: fibers.map((x) => x.id), selected: f.fibers } })}<div class="chips">` +
-      shortList('fibers', fibers, FIBER_TOP, (x) => f.fibers.includes(x.id), (x) => chip('fiber', x.id, x[lang] || x.en, f.fibers.includes(x.id))) + '</div></div>');
-    // Kolor
-    html.push(`<div class="fgroup">${groupHead('filters.colors', { info: t('filters.colorsNote'), selectAll: { field: 'colors', ids: R.COLORS.map((c) => c.id), selected: f.colors } })}<div class="chips">` +
-      shortList('colors', R.COLORS, COLOR_TOP, (c) => f.colors.includes(c.id),
-        (c) => chip('color', c.id, c[lang] || c.en, f.colors.includes(c.id), `<span class="dot" style="background:${c.hex}"></span>`)) + '</div></div>');
-    // Cena za metr
-    html.push(`<div class="fgroup">${groupHead('filters.maxPrice', { info: t('filters.priceNote') })}<div class="chips">` +
-      chip('price', '', t('filters.any'), !f.maxPrice) +
-      R.MAX_PRICE_STEPS.map((v) => chip('price', v, t('filters.upTo', v), f.maxPrice === v)).join('') + '</div></div>');
-    // Wzór: jednolite / wzorzyste
-    html.push(`<div class="fgroup">${groupHead('filters.pattern', { info: t('filters.patternNote') })}<div class="chips">` +
-      chip('pattern', '', t('filters.patternAny'), !f.pattern) +
-      chip('pattern', 'plain', t('filters.patternPlain'), f.pattern === 'plain') +
-      chip('pattern', 'patterned', t('filters.patternPatterned'), f.pattern === 'patterned') + '</div></div>');
-    // Gramatura (g/m²): gotowe przedziały albo własny zakres suwakiem
-    const wSet = f.weightMin != null || f.weightMax != null;
-    const wPreset = R.weightPreset(f.weightMin, f.weightMax);
-    const wCustom = weightCustomOpen || (wSet && !wPreset);
-    const W_MAX = R.WEIGHT_SLIDER_MAX;
-    html.push(`<div class="fgroup" id="weight-group">${groupHead('filters.weight', { info: t('filters.weightNote') })}<div class="chips">` +
-      chip('weight', '', t('filters.any'), !wSet && !weightCustomOpen) +
-      Object.keys(R.WEIGHT_RANGES).map((k) => chip('weight', k, t('filters.weight.' + k), !wCustom && wPreset === k)).join('') +
-      chip('weight', 'custom', t('filters.weight.custom'), wCustom) +
-      `</div>` +
-      (wCustom ? `<div class="wrange-box">
-        <div class="wrange-label" id="weight-label">${esc(R.weightLabel(f.weightMin, f.weightMax) || '0–' + W_MAX + '+ g/m²')}</div>
-        <div class="wrange">
-          <div class="wtrack"><div class="wfill" id="weight-fill"></div></div>
-          <input type="range" id="weight-min" min="0" max="${W_MAX}" step="${R.WEIGHT_STEP}" value="${f.weightMin || 0}" aria-label="${esc(t('filters.weightMinAria'))}">
-          <input type="range" id="weight-max" min="0" max="${W_MAX}" step="${R.WEIGHT_STEP}" value="${f.weightMax == null ? W_MAX : f.weightMax}" aria-label="${esc(t('filters.weightMaxAria'))}">
-        </div>
-        <div class="wrange-scale"><span>0</span><span>200</span><span>400</span><span>${W_MAX}+</span></div>
-      </div>` : '') + '</div>');
-    // Szerokość
-    html.push(`<div class="fgroup">${groupHead('filters.minWidth')}<div class="chips">` +
-      chip('width', '', t('filters.anyWidth'), !f.minWidth) +
-      R.MIN_WIDTH_STEPS.map((v) => chip('width', v, t('filters.fromWidth', v), f.minWidth === v)).join('') + '</div></div>');
-    // Skład: udział wybranego materiału i „bez syntetyków” (bez materiału: krótka wskazówka zostaje widoczna)
-    const purityOff = !f.fibers.length;
-    html.push(`<div class="fgroup">${groupHead('filters.composition', { info: t('filters.compositionNote') })}` +
-      (purityOff ? `<p class="hint">${esc(t('filters.purityPick'))}</p>` : '') +
-      `<div class="chips${purityOff ? ' disabled' : ''}">` +
-      chip('purity', '', t('filters.purityAny'), !f.purity, '', purityOff) +
-      R.PURITY_STEPS.map((v) => chip('purity', v, v === 100 ? t('filters.purity100') : t('filters.purityMin', v), f.purity === v, '', purityOff)).join('') +
-      `</div><div class="chips">` + chip('nosynth', '1', t('filters.noSynthetic'), f.noSynthetic) + '</div></div>');
-    // Ile metrów potrzebujesz
-    html.push(`<div class="fgroup">${groupHead('filters.minStock', { info: t('filters.stockNote') })}<div class="chips">` +
-      chip('stock', '', t('filters.any'), !f.minStock) +
-      R.MIN_STOCK_STEPS.map((v) => chip('stock', v, t('filters.fromStock', v), f.minStock === v)).join('') +
-      `</div><div class="chips">` + chip('stockknown', '1', t('filters.stockKnown'), f.stockKnown) + '</div></div>');
-    // Nowości
-    html.push(`<div class="fgroup">${groupHead('filters.newDays')}<div class="chips">` +
-      chip('new', '', t('filters.newAny'), !f.newDays) +
-      [1, 7, 30].map((d) => chip('new', d, t('filters.new' + d), f.newDays === d)).join('') + '</div></div>');
-    // Sklepy pogrupowane według krajów: kraj = wszystkie jego sklepy (także przyszłe), wybory się sumują
-    const byCountry = source.shopsByCountry;
-    const shopName = Object.fromEntries(source.shops.map((s) => [s.id, s.name]));
-    const grouped = new Set(countries.flatMap((c) => byCountry[c] || []));
-    const loose = source.shops.filter((s) => !grouped.has(s.id)).map((s) => s.id);
-    const shopChips = (ids, whole) => ids.slice().sort((a, b) => (shopName[a] || a).localeCompare(shopName[b] || b))
-      .map((id) => chip('shop', id, shopName[id] || id, whole || f.shops.includes(id))).join('');
-    html.push(`<div class="fgroup">${groupHead('filters.shops')}` +
-      `<div class="chips">${chip('shop', '', t('filters.anyShop'), !f.countries.length && !f.shops.length)}</div>` +
-      countries.map((c) => {
-        const on = f.countries.includes(c);
-        const ids = byCountry[c] || [];
-        // nazwy sklepów schowane, dopóki ktoś ich nie rozwinie (albo nie wybrał pojedynczego sklepu z tego kraju)
-        const open = expanded.has('country:' + c) || ids.some((id) => f.shops.includes(id));
-        return `<div class="shop-country"><div class="country-row"><button type="button" class="country-head" data-country="${esc(c)}" aria-pressed="${on}">` +
-          `<span class="tick" aria-hidden="true"></span>${esc(countryName(c))}</button>` +
-          `<button type="button" class="text-btn small" data-expand="country:${esc(c)}" aria-expanded="${open}">` +
-          `${esc(open ? t('filters.less') : t('filters.showShops', ids.length))}</button></div>` +
-          (open ? `<div class="chips">${shopChips(ids, on)}</div>` : '') + '</div>';
-      }).join('') +
-      (loose.length ? `<div class="chips">${shopChips(loose, false)}</div>` : '') +
-      '</div>');
-    $('#filters-body').innerHTML = html.join('');
-    syncWeightSlider(null);
-    updateApplyCount();
+    if (show('material')) {
+      html.push(`<div class="fgroup">${groupHead('filters.kind')}<div class="chips">` +
+        ['all', 'fabric', 'leather'].map((k) => chip('kind', k, t('filters.kind.' + k), f.kind === k, '', false, k === 'all' ? null : cnt('kind', k))).join('') + '</div></div>');
+      const fibers = R.FIBERS.filter((x) => x.id !== 'leather');
+      html.push(`<div class="fgroup">${groupHead('filters.fibers', { selectAll: { field: 'fibers', ids: fibers.map((x) => x.id), selected: f.fibers } })}<div class="chips">` +
+        shortList('fibers', fibers, FIBER_TOP, (x) => f.fibers.includes(x.id), (x) => chip('fiber', x.id, x[lang] || x.en, f.fibers.includes(x.id), '', false, cnt('fibers', x.id))) + '</div></div>');
+    }
+    if (show('colors')) {
+      html.push(`<div class="fgroup">${groupHead('filters.colors', { info: t('filters.colorsNote'), selectAll: { field: 'colors', ids: R.COLORS.map((c) => c.id), selected: f.colors } })}<div class="chips">` +
+        shortList('colors', R.COLORS, COLOR_TOP, (c) => f.colors.includes(c.id),
+          (c) => chip('color', c.id, c[lang] || c.en, f.colors.includes(c.id), `<span class="dot" style="background:${c.hex}"></span>`, false, cnt('colors', c.id))) + '</div></div>');
+    }
+    if (show('price')) {
+      html.push(`<div class="fgroup">${groupHead('filters.maxPrice', { info: t('filters.priceNote') })}<div class="chips">` +
+        chip('price', '', t('filters.any'), !f.maxPrice) +
+        R.MAX_PRICE_STEPS.map((v) => chip('price', v, t('filters.upTo', v), f.maxPrice === v, '', false, cnt('price', v))).join('') + '</div></div>');
+    }
+    if (show('pattern')) {
+      html.push(`<div class="fgroup">${groupHead('filters.pattern', { info: t('filters.patternNote') })}<div class="chips">` +
+        chip('pattern', '', t('filters.patternAny'), !f.pattern) +
+        chip('pattern', 'plain', t('filters.patternPlain'), f.pattern === 'plain', '', false, cnt('pattern', 'plain')) +
+        chip('pattern', 'patterned', t('filters.patternPatterned'), f.pattern === 'patterned', '', false, cnt('pattern', 'patterned')) + '</div></div>');
+    }
+    if (show('weight')) {
+      // Gramatura (g/m²): gotowe przedziały albo własny zakres suwakiem
+      const wSet = f.weightMin != null || f.weightMax != null;
+      const wPreset = R.weightPreset(f.weightMin, f.weightMax);
+      const wCustom = weightCustomOpen || (wSet && !wPreset);
+      const W_MAX = R.WEIGHT_SLIDER_MAX;
+      html.push(`<div class="fgroup weight-group">${groupHead('filters.weight', { info: t('filters.weightNote') })}<div class="chips">` +
+        chip('weight', '', t('filters.any'), !wSet && !weightCustomOpen) +
+        Object.keys(R.WEIGHT_RANGES).map((k) => chip('weight', k, t('filters.weight.' + k), !wCustom && wPreset === k, '', false, cnt('weight', k))).join('') +
+        chip('weight', 'custom', t('filters.weight.custom'), wCustom) +
+        `</div>` +
+        (wCustom ? `<div class="wrange-box">
+          <div class="wrange-label w-label">${esc(R.weightLabel(f.weightMin, f.weightMax) || '0–' + W_MAX + '+ g/m²')}</div>
+          <div class="wrange">
+            <div class="wtrack"><div class="wfill w-fill"></div></div>
+            <input type="range" class="w-min" min="0" max="${W_MAX}" step="${R.WEIGHT_STEP}" value="${f.weightMin || 0}" aria-label="${esc(t('filters.weightMinAria'))}">
+            <input type="range" class="w-max" min="0" max="${W_MAX}" step="${R.WEIGHT_STEP}" value="${f.weightMax == null ? W_MAX : f.weightMax}" aria-label="${esc(t('filters.weightMaxAria'))}">
+          </div>
+          <div class="wrange-scale"><span>0</span><span>200</span><span>400</span><span>${W_MAX}+</span></div>
+        </div>` : '') + '</div>');
+    }
+    if (show('width')) {
+      html.push(`<div class="fgroup">${groupHead('filters.minWidth')}<div class="chips">` +
+        chip('width', '', t('filters.anyWidth'), !f.minWidth) +
+        R.MIN_WIDTH_STEPS.map((v) => chip('width', v, t('filters.fromWidth', v), f.minWidth === v, '', false, cnt('width', v))).join('') + '</div></div>');
+    }
+    if (show('material')) {
+      // Skład: udział wybranego materiału i „bez syntetyków” (bez materiału: krótka wskazówka zostaje widoczna)
+      const purityOff = !f.fibers.length;
+      html.push(`<div class="fgroup">${groupHead('filters.composition', { info: t('filters.compositionNote') })}` +
+        (purityOff ? `<p class="hint">${esc(t('filters.purityPick'))}</p>` : '') +
+        `<div class="chips${purityOff ? ' disabled' : ''}">` +
+        chip('purity', '', t('filters.purityAny'), !f.purity, '', purityOff) +
+        R.PURITY_STEPS.map((v) => chip('purity', v, v === 100 ? t('filters.purity100') : t('filters.purityMin', v), f.purity === v, '', purityOff)).join('') +
+        `</div><div class="chips">` + chip('nosynth', '1', t('filters.noSynthetic'), f.noSynthetic) + '</div></div>');
+    }
+    if (show('stock')) {
+      html.push(`<div class="fgroup">${groupHead('filters.minStock', { info: t('filters.stockNote') })}<div class="chips">` +
+        chip('stock', '', t('filters.any'), !f.minStock) +
+        R.MIN_STOCK_STEPS.map((v) => chip('stock', v, t('filters.fromStock', v), f.minStock === v, '', false, cnt('stock', v))).join('') +
+        `</div><div class="chips">` + chip('stockknown', '1', t('filters.stockKnown'), f.stockKnown) + '</div></div>');
+    }
+    if (show('newDays')) {
+      html.push(`<div class="fgroup">${groupHead('filters.newDays')}<div class="chips">` +
+        chip('new', '', t('filters.newAny'), !f.newDays) +
+        [1, 7, 30].map((d) => chip('new', d, t('filters.new' + d), f.newDays === d, '', false, cnt('newDays', d))).join('') + '</div></div>');
+    }
+    if (show('shops')) {
+      // Sklepy pogrupowane według krajów: kraj = wszystkie jego sklepy (także przyszłe), wybory się sumują
+      const byCountry = source.shopsByCountry;
+      const countries = Object.keys(byCountry).sort((a, b) => countryName(a).localeCompare(countryName(b)));
+      const shopName = Object.fromEntries(source.shops.map((s) => [s.id, s.name]));
+      const grouped = new Set(countries.flatMap((c) => byCountry[c] || []));
+      const loose = source.shops.filter((s) => !grouped.has(s.id)).map((s) => s.id);
+      const shopCount = (id) => cnt('shops', id);
+      const shopChips = (ids, whole) => ids.slice().sort((a, b) => (shopName[a] || a).localeCompare(shopName[b] || b))
+        .map((id) => chip('shop', id, shopName[id] || id, whole || f.shops.includes(id), '', false, shopCount(id))).join('');
+      html.push(`<div class="fgroup">${groupHead('filters.shops')}` +
+        `<div class="chips">${chip('shop', '', t('filters.anyShop'), !f.countries.length && !f.shops.length)}</div>` +
+        countries.map((c) => {
+          const on = f.countries.includes(c);
+          const ids = byCountry[c] || [];
+          const n = counts && counts.shops ? ids.reduce((s, id) => s + (counts.shops[id] || 0), 0) : null;
+          // nazwy sklepów schowane, dopóki ktoś ich nie rozwinie (albo nie wybrał pojedynczego sklepu z tego kraju)
+          const open = expanded.has('country:' + c) || ids.some((id) => f.shops.includes(id));
+          return `<div class="shop-country"><div class="country-row"><button type="button" class="country-head" data-country="${esc(c)}" aria-pressed="${on}">` +
+            `<span class="tick" aria-hidden="true"></span>${esc(countryName(c))}${n != null ? `<span class="n">${esc(I.fmtNum(n, lang))}</span>` : ''}</button>` +
+            `<button type="button" class="text-btn small" data-expand="country:${esc(c)}" aria-expanded="${open}">` +
+            `${esc(open ? t('filters.less') : t('filters.showShops', ids.length))}</button></div>` +
+            (open ? `<div class="chips">${shopChips(ids, on)}</div>` : '') + '</div>';
+        }).join('') +
+        (loose.length ? `<div class="chips">${shopChips(loose, false)}</div>` : '') +
+        '</div>');
+    }
+    return html.join('');
   }
 
-  let countTimer = null, countSeq = 0;
-  function updateApplyCount() {
-    $('#filters-apply').textContent = t('filters.show', null);
-    clearTimeout(countTimer);
-    const seq = ++countSeq;
-    countTimer = setTimeout(async () => {
-      try {
-        const n = await source.countNew(R.dropOffFilterWords(state.draft), null);
-        if (seq === countSeq) $('#filters-apply').textContent = t('filters.show', n);
-      } catch (e) { /* zostaje bez liczby */ }
-    }, 250);
-  }
-
-  $('#filters-body').addEventListener('click', (e) => {
-    const f = state.draft;
+  /**
+   * Kliknięcie w grupach filtrów (arkusz albo kolumna). Zwraca {f} z nowymi filtrami, {redraw: true} gdy zmienił się
+   * tylko wygląd (rozwinięcie listy, objaśnienie, własny zakres gramatury) albo null.
+   */
+  function filterClick(e, filters) {
+    const f = Object.assign({}, filters);
     const sa = e.target.closest('[data-selectall]');
     if (sa) {
       f[sa.dataset.selectall] = sa.dataset.on === '1' ? sa.dataset.ids.split(',').filter(Boolean) : [];
-      state.draft = R.normalizeFilters(f);
-      const y0 = $('#filters-body').scrollTop;
-      renderFilterSheet();
-      $('#filters-body').scrollTop = y0;
-      return;
+      return { f: R.normalizeFilters(f) };
     }
     const ib = e.target.closest('[data-info]');
     const xb = e.target.closest('[data-expand]');
     if (ib || xb) {
       const [set, key] = ib ? [openInfo, ib.dataset.info] : [expanded, xb.dataset.expand];
       if (set.has(key)) set.delete(key); else set.add(key);
-      const y2 = $('#filters-body').scrollTop;
-      renderFilterSheet();
-      $('#filters-body').scrollTop = y2;
-      if (ib) { const nb = $('#filters-body').querySelector(`[data-info="${key}"]`); if (nb) nb.focus(); }
-      return;
+      return { redraw: true, focusInfo: ib ? key : null };
     }
     const ch = e.target.closest('.country-head');
-    if (ch) {
-      state.draft = R.normalizeFilters(R.toggleCountry(f, ch.dataset.country, source.shopsByCountry));
-      const y1 = $('#filters-body').scrollTop;
-      renderFilterSheet();
-      $('#filters-body').scrollTop = y1;
-      return;
-    }
+    if (ch) return { f: R.normalizeFilters(R.toggleCountry(f, ch.dataset.country, source.shopsByCountry)) };
     const b = e.target.closest('.chip');
-    if (!b) return;
+    if (!b || b.disabled) return null;
     const toggle = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v));
     if (b.dataset.kind) f.kind = b.dataset.kind;
     else if (b.dataset.fiber) f.fibers = toggle(f.fibers, b.dataset.fiber);
@@ -815,8 +984,8 @@
     else if ('pattern' in b.dataset) f.pattern = b.dataset.pattern || null;
     else if ('weight' in b.dataset) {
       const k = b.dataset.weight;
-      if (k === 'custom') { weightCustomOpen = true; }
-      else if (!k) { f.weightMin = null; f.weightMax = null; weightCustomOpen = false; }
+      if (k === 'custom') { weightCustomOpen = true; return { redraw: true }; }
+      if (!k) { f.weightMin = null; f.weightMax = null; weightCustomOpen = false; }
       else { const [lo, hi] = R.WEIGHT_RANGES[k]; f.weightMin = lo || null; f.weightMax = hi; weightCustomOpen = false; }
     }
     else if (b.dataset.stockknown) f.stockKnown = !f.stockKnown;
@@ -829,15 +998,88 @@
       if (!b.dataset.shop) { f.countries = []; f.shops = []; }
       else Object.assign(f, R.toggleShop(f, b.dataset.shop, source.shopsByCountry));
     }
-    state.draft = R.normalizeFilters(f);
-    const y = $('#filters-body').scrollTop;
-    renderFilterSheet();
-    $('#filters-body').scrollTop = y;
+    else return null;
+    return { f: R.normalizeFilters(f) };
+  }
+
+  // Liczby przy opcjach: jedno zapytanie na stan filtrów, zapamiętane (zmiana i powrót nie pyta bazy drugi raz)
+  const countsCache = new Map();
+  function loadCounts(filters) {
+    const key = R.filtersKey(R.dropOffFilterWords(filters));
+    if (!countsCache.has(key)) {
+      const p = source.facetCounts(R.dropOffFilterWords(filters)).catch(() => null);
+      countsCache.set(key, p);
+      p.then((c) => { if (!c) countsCache.delete(key); });
+      if (countsCache.size > 40) countsCache.delete(countsCache.keys().next().value);
+    }
+    return countsCache.get(key);
+  }
+
+  // --- Arkusz filtrów (wszystkie grupy albo jedna, z przycisku pod wyszukiwarką) ---------------
+  function renderFilterSheet(focusInfo) {
+    const body = $('#filters-body');
+    const y = body.scrollTop;
+    const key = R.filtersKey(state.draft);
+    body.innerHTML = filterGroupsHtml(state.draft, state.sheetGroup, state.sheetCountsFor === key ? state.sheetCounts : null);
+    body.scrollTop = y;
+    $('#filters-title').textContent = state.sheetGroup ? t('row.' + state.sheetGroup) : t('filters.title');
+    syncWeightSlider(body, null);
+    if (focusInfo) { const nb = body.querySelector(`[data-info="${focusInfo}"]`); if (nb) nb.focus(); }
+    updateApplyCount();
+  }
+  $('#filters-body').addEventListener('input', (e) => {
+    if (!e.target.matches('.w-min, .w-max')) return;
+    const r = syncWeightSlider($('#filters-body'), e.target);
+    state.draft.weightMin = r.min;
+    state.draft.weightMax = r.max;
+    updateApplyCount();
   });
 
-  function openFilters() {
+  let countTimer = null, countSeq = 0;
+  /** Liczba na przycisku „Pokaż N” i liczby przy opcjach (po chwili bez zmian, żeby nie pytać przy każdym kliknięciu). */
+  function updateApplyCount() {
+    $('#filters-apply').textContent = t('filters.show', null);
+    clearTimeout(countTimer);
+    const seq = ++countSeq;
+    const draft = state.draft;
+    countTimer = setTimeout(async () => {
+      const key = R.filtersKey(draft);
+      const counts = await loadCounts(draft);
+      if (seq !== countSeq) return;
+      if (counts && counts.total != null) {
+        $('#filters-apply').textContent = t('filters.show', counts.total);
+        if (state.sheetCountsFor !== key) {
+          state.sheetCounts = counts;
+          state.sheetCountsFor = key;
+          const body = $('#filters-body');
+          const y = body.scrollTop;
+          body.innerHTML = filterGroupsHtml(state.draft, state.sheetGroup, counts);
+          body.scrollTop = y;
+          syncWeightSlider(body, null);
+        }
+        return;
+      }
+      try {   // tryb podglądu albo błąd liczenia: sam licznik wyników
+        const n = await source.countNew(R.dropOffFilterWords(draft), null);
+        if (seq === countSeq) $('#filters-apply').textContent = t('filters.show', n);
+      } catch (e) { /* zostaje bez liczby */ }
+    }, 250);
+  }
+
+  $('#filters-body').addEventListener('click', (e) => {
+    const r = filterClick(e, state.draft);
+    if (!r) return;
+    if (r.f) state.draft = r.f;
+    renderFilterSheet(r.focusInfo);
+  });
+
+  /** group = jedna grupa (przycisk pod wyszukiwarką) albo nic (przycisk „Filtry”: wszystkie). */
+  function openFilters(group) {
+    hideIntro();
     weightCustomOpen = false;
+    state.sheetGroup = typeof group === 'string' ? group : null;
     state.draft = R.normalizeFilters(Object.assign({}, state.filters, { q: $('#q').value }));
+    $('#filters-sheet').classList.toggle('mini', !!state.sheetGroup);
     renderFilterSheet();
     $('#filters-backdrop').hidden = false;
     $('#filters-sheet').hidden = false;
@@ -848,10 +1090,11 @@
     $('#filters-sheet').hidden = true;
     document.body.style.overflow = '';
   }
-  $('#open-filters').addEventListener('click', openFilters);
+  $('#open-filters').addEventListener('click', () => openFilters());
   $('#filters-backdrop').addEventListener('click', closeFilters);
   $('#filters-reset').addEventListener('click', () => {
-    state.draft = Object.assign(R.defaultFilters(), { q: state.draft.q, sort: state.draft.sort });
+    state.draft = state.sheetGroup ? R.clearGroup(state.draft, state.sheetGroup)
+      : Object.assign(R.defaultFilters(), { q: state.draft.q, sort: state.draft.sort });
     renderFilterSheet();
   });
   $('#filters-apply').addEventListener('click', () => {
@@ -860,17 +1103,102 @@
     window.scrollTo(0, 0);
   });
 
+  // --- Komputer: filtry w kolumnie po lewej, każde kliknięcie od razu zmienia wyniki --------------
+  let sideSeq = 0;
+  function renderSide() {
+    const aside = $('#filters-side');
+    if (!wide.matches) { aside.hidden = true; return; }
+    aside.hidden = false;
+    const body = $('#side-body');
+    const key = R.filtersKey(R.dropOffFilterWords(state.filters));
+    const draw = (counts) => {
+      const y = body.scrollTop;
+      body.innerHTML = filterGroupsHtml(state.filters, null, counts);
+      body.scrollTop = y;
+      syncWeightSlider(body, null);
+    };
+    draw(state.sideCountsFor === key ? state.sideCounts : null);
+  }
+  /** Liczby w kolumnie: dopiero po wczytaniu wyników (żeby liczenie nie spowalniało samego wyszukiwania). */
+  function loadSideCounts() {
+    if (!wide.matches) return;
+    const key = R.filtersKey(R.dropOffFilterWords(state.filters));
+    if (state.sideCountsFor === key) return;
+    const seq = ++sideSeq;
+    loadCounts(state.filters).then((c) => {
+      if (seq !== sideSeq || !c) return;
+      state.sideCounts = c;
+      state.sideCountsFor = key;
+      renderSide();
+    });
+  }
+  $('#side-body').addEventListener('click', (e) => {
+    const r = filterClick(e, state.filters);
+    if (!r) return;
+    if (r.f) setFilters(r.f);
+    else renderSide();
+  });
+  $('#side-body').addEventListener('input', (e) => {
+    if (e.target.matches('.w-min, .w-max')) syncWeightSlider($('#side-body'), e.target);
+  });
+  $('#side-body').addEventListener('change', (e) => {   // gramatura z suwaka: po puszczeniu uchwytu
+    if (!e.target.matches('.w-min, .w-max')) return;
+    const r = syncWeightSlider($('#side-body'), e.target);
+    setFilters(Object.assign({}, state.filters, { weightMin: r.min, weightMax: r.max }));
+  });
+  $('#side-reset').addEventListener('click', clearAllFilters);
+  wide.addEventListener('change', () => { renderSide(); loadSideCounts(); });
+
   // --- Alerty -----------------------------------------------------------------
   function shopsById() { return Object.fromEntries(source.shops.map((s) => [s.id, s])); }
 
-  $('#save-alert').addEventListener('click', () => {
+  function saveAlert() {
     const f = Object.assign({}, state.filters, { q: $('#q').value });
     if (alerts.find(f)) { toast(t('alerts.exists')); return; }
     const a = alerts.add(R.describeFilters(f, I.getLang(), shopsById()), f);
     if (!a) { toast(t('alerts.limit', R.MAX_ALERTS)); return; }
+    searchMemory.markNudged(f);
     toast(t('alerts.saved'));
     source.track('alert_save', { query: f.q || null, detail: R.describeFilters(f, 'en', shopsById()) });
     renderAlertsBadge();
+  }
+  $('#save-alert').addEventListener('click', saveAlert);
+
+  /** To samo wyszukiwanie w kolejnej wizycie: raz pytamy, czy zapisać je jako alert. */
+  function maybeNudge() {
+    const f = state.filters;
+    if (state.editAlert || !state.items.length || !searchMemory.shouldNudge(f) || alerts.find(f)) return;
+    searchMemory.markNudged(f);
+    toast(t('alerts.nudge'), t('alerts.nudgeSave'), saveAlert);
+  }
+
+  // Edycja alertu: wyszukiwanie alertu wraca do zakładki Szukaj, a pasek nad wynikami zapisuje zmiany
+  function renderEditBanner() {
+    const el = $('#edit-banner');
+    const a = state.editAlert && alerts.list().find((x) => x.id === state.editAlert);
+    if (!a) { state.editAlert = null; el.hidden = true; $('#save-alert').hidden = false; return; }
+    el.hidden = false;
+    $('#save-alert').hidden = true;
+    el.innerHTML = `<p>${esc(t('alerts.editing', a.name))}</p><div class="edit-actions">` +
+      `<button type="button" class="primary-btn" id="edit-save">${esc(t('alerts.update'))}</button>` +
+      `<button type="button" class="ghost-btn" id="edit-cancel">${esc(t('alerts.cancelEdit'))}</button></div>`;
+  }
+  $('#edit-banner').addEventListener('click', (e) => {
+    if (e.target.closest('#edit-cancel')) {
+      state.editAlert = null;
+      renderEditBanner();
+      switchView('alerts');
+    } else if (e.target.closest('#edit-save')) {
+      const f = Object.assign({}, state.filters, { q: $('#q').value });
+      const a = alerts.update(state.editAlert, R.describeFilters(f, I.getLang(), shopsById()), f);
+      if (!a) { toast(t('alerts.exists')); return; }
+      searchMemory.markNudged(f);
+      state.editAlert = null;
+      renderEditBanner();
+      renderAlertsBadge();
+      toast(t('alerts.updated'));
+      switchView('alerts');
+    }
   });
 
   async function checkAlerts() {
@@ -903,6 +1231,7 @@
         <div class="meta">${esc(t('alerts.since', fmtDate(a.seenAt)))}</div>
         <div class="actions">
           <button type="button" class="ghost-btn" data-show="${esc(a.id)}">${esc(t('alerts.show'))}</button>
+          <button type="button" class="ghost-btn" data-edit="${esc(a.id)}">${esc(t('alerts.edit'))}</button>
           <button type="button" class="ghost-btn" data-del="${esc(a.id)}">${esc(t('alerts.delete'))}</button>
         </div>
       </div>`).join('');
@@ -911,6 +1240,17 @@
   $('#alert-list').addEventListener('click', (e) => {
     const show = e.target.closest('[data-show]');
     const del = e.target.closest('[data-del]');
+    const edit = e.target.closest('[data-edit]');
+    if (edit) {
+      const a = alerts.list().find((x) => x.id === edit.dataset.edit);
+      if (!a) return;
+      state.editAlert = a.id;
+      $('#q').value = a.filters.q || '';
+      $('#q-clear').hidden = !a.filters.q;
+      switchView('search');
+      setFilters(Object.assign({}, a.filters));
+      return;
+    }
     if (show) {
       const a = alerts.list().find((x) => x.id === show.dataset.show);
       if (!a) return;
@@ -986,7 +1326,7 @@
   $('#lang').addEventListener('change', (e) => {
     I.setLang(e.target.value);
     storage.setItem('remna-jezyk', I.getLang());
-    applyI18n(); renderQuick(); renderSort(); renderResults(); renderModeBanner();
+    applyI18n(); renderQuick(); renderSort(); renderResults(); renderModeBanner(); renderSide(); renderEditBanner();
     if (state.view === 'more') renderMore();
   });
 
@@ -1017,9 +1357,14 @@
 
   // Cień pod nagłówkiem przy przewijaniu
   window.addEventListener('scroll', () => { $('.top').classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
+  // Wysokość nagłówka (komputer: kolumna filtrów przykleja się tuż pod nim)
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', $('.top').offsetHeight + 'px')).observe($('.top'));
+  }
 
   // Wstecz (Android) i Esc (komputer)
   function handleBack() {
+    if (!$('#suggest').hidden) { hideSuggest(); return true; }
     if (!$('#detail').hidden) { closeDetail(); return true; }   // (na Androidzie: przycisk wstecz)
     if (!$('#filters-sheet').hidden) { closeFilters(); return true; }
     if (state.view !== 'search') { switchView('search'); return true; }
@@ -1102,7 +1447,8 @@
   // --- Start ----------------------------------------------------------------------
   // --- Powitanie (pierwsza wizyta) -----------------------------------------------------
   function showIntro() {
-    if (storage.getItem('remna-powitanie')) { $('#intro').hidden = true; return; }
+    // Wejście z linkiem do wyszukiwania (np. z Google): najpierw wyniki, powitanie przy następnej zwykłej wizycie
+    if (storage.getItem('remna-powitanie') || R.isSearch(state.filters)) { $('#intro').hidden = true; return; }
     const ua = navigator.userAgent || '';
     const iosSafari = /iPhone|iPad|iPod/.test(ua) && !window.navigator.standalone && !N.isNative;
     $('#intro-ios').hidden = !iosSafari;
@@ -1134,7 +1480,6 @@
       return;
     }
     renderModeBanner();
-    showIntro();
     // Link z filtrami (?q=…&colors=…) albo do oferty (?o=…)
     let openId = null;
     if (WEB) {
@@ -1143,7 +1488,10 @@
       if (fromUrl) { state.filters = fromUrl; $('#q').value = fromUrl.q || ''; state.typed = R.extractFilters(fromUrl.q, true); renderQuick(); renderFilterBadge(); $('#sort').value = fromUrl.sort; }
     }
     pruneGoneShops();
+    showIntro();
     renderActive();
+    renderQuick();   // podpisy sklepów w przyciskach są znane dopiero po wczytaniu listy sklepów
+    renderSide();
     if (WEB) {
       const params = new URLSearchParams(location.search);
       openId = params.get('o');

@@ -30,7 +30,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Remna">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=3a18661">
+  <link rel="stylesheet" href="styles.css?v=e216314">
   <!-- Powitanie jest w HTML widoczne (dla Google i bez JS); kto je zamknął, nie widzi go nawet przez chwilę -->
   <script>try { if (localStorage.getItem('remna-powitanie')) document.documentElement.classList.add('intro-seen'); } catch (e) {}</script>
 </head>
@@ -55,48 +55,60 @@
             <span class="badge" id="filter-count" hidden></span>
           </button>
         </form>
+        <!-- Podpowiedzi pod wyszukiwarką: ostatnie wyszukiwania i dokończenia słów -->
+        <div class="suggest" id="suggest" role="listbox" hidden></div>
+        <!-- Przyciski grup filtrów (Materiał ▾ Kolor ▾ Cena/m ▾ …); ustawione pokazują wybór i ✕ -->
         <div class="quick" id="quick" role="toolbar"></div>
       </header>
 
-      <div class="banner" id="mode-banner" hidden></div>
-
-      <!-- Powitanie przy pierwszej wizycie -->
-      <section class="intro" id="intro" aria-labelledby="intro-title">
-        <button type="button" class="icon-btn intro-close" id="intro-close" data-i18n-aria="intro.close">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-        </button>
-        <h1 id="intro-title" data-i18n="intro.title">Deadstock fabric search for sewists and small designers</h1>
-        <p data-i18n="intro.lead">Deadstock fabrics are surplus from fashion houses and mills: beautiful materials in limited quantities. Remna searches the shops that sell them, so you do not have to.</p>
-        <ul>
-          <li data-i18n="intro.point1">Search by material, composition (e.g. 100% silk), colour, pattern and price per metre.</li>
-          <li data-i18n="intro.point2">Save favourites and alerts to see what is new since your last visit.</li>
-          <li data-i18n="intro.point3">You buy directly from the shop. Remna does not handle payment and needs no account.</li>
-        </ul>
-        <p class="intro-ios" id="intro-ios" hidden data-i18n="intro.ios">On iPhone: in Safari tap Share → Add to Home Screen and Remna opens like an app.</p>
-        <button type="button" class="primary-btn intro-go" id="intro-go" data-i18n="intro.go">Start searching</button>
-      </section>
-
-      <div class="active-filters" id="active-filters" hidden></div>
-      <div class="resultbar">
-        <span class="resultbar-count">
-          <span id="result-count" aria-live="polite"></span>
-          <button type="button" class="link-btn" id="clear-filters" hidden data-i18n="results.clearAll">Clear all filters</button>
-        </span>
-        <div class="resultbar-actions">
-          <button type="button" class="text-btn" id="save-alert">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
-            <span data-i18n="alerts.save">Save alert</span>
-          </button>
-          <label class="sort">
-            <span class="sr-only" data-i18n="sort.label">Sort</span>
-            <select id="sort"></select>
-          </label>
+      <div class="search-layout">
+        <!-- Komputer: filtry w kolumnie po lewej, działają od razu -->
+        <aside class="side-filters" id="filters-side" hidden aria-labelledby="side-title">
+          <div class="side-head">
+            <h2 id="side-title" data-i18n="filters.title">Filters</h2>
+            <button type="button" class="text-btn small" id="side-reset" data-i18n="filters.reset">Clear filters</button>
+          </div>
+          <div class="side-body" id="side-body"></div>
+        </aside>
+        <div class="results-col">
+          <div class="banner" id="mode-banner" hidden></div>
+          <!-- Powitanie przy pierwszej wizycie -->
+          <section class="intro" id="intro" aria-labelledby="intro-title">
+            <button type="button" class="icon-btn intro-close" id="intro-close" data-i18n-aria="intro.close">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <h1 id="intro-title" data-i18n="intro.title">Deadstock fabric search for sewists and small designers</h1>
+            <p data-i18n="intro.lead">Deadstock fabrics are surplus from fashion houses and mills: beautiful materials in limited quantities. Remna searches the shops that sell them, so you do not have to.</p>
+            <ul>
+              <li data-i18n="intro.point1">Search by material, composition (e.g. 100% silk), colour, pattern and price per metre.</li>
+              <li data-i18n="intro.point2">Save favourites and alerts to see what is new since your last visit.</li>
+              <li data-i18n="intro.point3">You buy directly from the shop. Remna does not handle payment and needs no account.</li>
+            </ul>
+            <p class="intro-ios" id="intro-ios" hidden data-i18n="intro.ios">On iPhone: in Safari tap Share → Add to Home Screen and Remna opens like an app.</p>
+            <button type="button" class="primary-btn intro-go" id="intro-go" data-i18n="intro.go">Start searching</button>
+          </section>
+          <div class="edit-banner" id="edit-banner" hidden></div>
+          <div class="resultbar">
+            <span class="resultbar-count">
+              <span id="result-count" aria-live="polite"></span>
+              <button type="button" class="link-btn" id="clear-filters" hidden data-i18n="results.clearAll">Clear all filters</button>
+            </span>
+            <div class="resultbar-actions">
+              <button type="button" class="text-btn" id="save-alert">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+                <span data-i18n="alerts.save">Save alert</span>
+              </button>
+              <label class="sort">
+                <span class="sr-only" data-i18n="sort.label">Sort</span>
+                <select id="sort"></select>
+              </label>
+            </div>
+          </div>
+          <p class="spell" id="spell" hidden aria-live="polite"></p>
+          <main class="grid" id="results" aria-busy="true"></main>
+          <div class="more-wrap"><button type="button" class="ghost-btn" id="load-more" hidden data-i18n="results.more">Show more</button></div>
         </div>
       </div>
-
-      <p class="spell" id="spell" hidden aria-live="polite"></p>
-      <main class="grid" id="results" aria-busy="true"></main>
-      <div class="more-wrap"><button type="button" class="ghost-btn" id="load-more" hidden data-i18n="results.more">Show more</button></div>
     </section>
 
     <!-- ULUBIONE -->
@@ -208,12 +220,12 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <script src="config.js?v=3a18661"></script>
-  <script src="i18n.js?v=3a18661"></script>
-  <script src="i18n-langs.js?v=3a18661"></script>
-  <script src="filters.js?v=3a18661"></script>
-  <script src="data.js?v=3a18661"></script>
-  <script src="native.js?v=3a18661"></script>
-  <script src="app.js?v=3a18661"></script>
+  <script src="config.js?v=e216314"></script>
+  <script src="i18n.js?v=e216314"></script>
+  <script src="i18n-langs.js?v=e216314"></script>
+  <script src="filters.js?v=e216314"></script>
+  <script src="data.js?v=e216314"></script>
+  <script src="native.js?v=e216314"></script>
+  <script src="app.js?v=e216314"></script>
 </body>
 </html>

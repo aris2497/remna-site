@@ -437,3 +437,114 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe
   grid-column: 1 / -1; margin: 12px 0 2px; padding: 12px 14px; border-radius: 12px;
   background: var(--surface); border: 1px dashed var(--line); color: var(--muted); font-size: 13px; line-height: 1.45;
 }
+
+/* ======================================================================
+   27.11: przyciski grup filtrów, liczby przy opcjach, podpowiedzi, alerty,
+   podobne tkaniny, filtry w kolumnie na komputerze
+   ====================================================================== */
+/* Przyciski grup pod wyszukiwarką: „Materiał ▾”; ustawiona grupa: wybór i ✕ */
+.fchip {
+  flex: none; display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 999px; font-size: 14px; white-space: nowrap;
+}
+.fchip-main {
+  border: 0; background: transparent; display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 8px 7px 13px; border-radius: 999px; max-width: 64vw;
+}
+.fchip-label { overflow: hidden; text-overflow: ellipsis; }
+.fchip .caret { width: 16px; height: 16px; color: var(--muted); flex: none; }
+.fchip .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgb(0 0 0 / 18%); flex: none; margin-right: -2px; }
+.fchip.on { background: var(--accent-soft); border-color: var(--accent); }
+.fchip.on .fchip-main { font-weight: 600; padding-right: 2px; }
+.fchip.on .caret { color: var(--accent); }
+.fchip-x { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 7px 12px 7px 6px; border-radius: 999px; }
+.fchip-x:hover { color: var(--ink); }
+
+/* Liczba ofert przy opcji filtra; opcja bez ofert jest szara */
+.chip .n, .country-head .n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 500; }
+.chip[aria-pressed="true"] .n { color: inherit; opacity: .8; }
+.country-head .n { margin-left: 2px; }
+
+/* Mały arkusz z jedną grupą filtrów */
+.sheet.mini { max-height: 72vh; }
+@media (min-width: 960px) { .sheet.mini { max-height: none; } }
+
+/* Karta: mało metrów na zdjęciu, metka do 2 linijek, „Cena w sklepie” bez liczby */
+.card .flag.low { top: auto; bottom: 8px; background: var(--live-bad); color: #fff; text-transform: none; letter-spacing: 0; }
+.label { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.see-shop { font-weight: 600; font-size: 14px; color: var(--muted); }
+
+/* Brak wyników: usuń jeden filtr (z liczbą), „Daj znać, gdy się pojawi” */
+.relax { max-width: 380px; margin: 14px auto 0; text-align: left; }
+.relax p { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.relax-list { display: grid; gap: 8px; }
+.relax-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 11px 14px; font-size: 14.5px; color: var(--ink); text-align: left;
+}
+.relax-item em { font-style: normal; color: var(--accent); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.relax-item:hover { border-color: var(--accent); }
+.empty-alert { max-width: 380px; margin: 22px auto 0; display: grid; gap: 6px; }
+.empty-alert .primary-btn { gap: 8px; }
+.empty-alert .primary-btn svg { width: 20px; height: 20px; }
+.empty-alert p { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Edycja alertu: pasek nad wynikami */
+.edit-banner {
+  margin: 10px var(--gutter-r) 0 var(--gutter-l); padding: 12px 14px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid var(--accent); display: grid; gap: 10px;
+}
+.edit-banner p { margin: 0; font-size: 14px; }
+.edit-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.edit-actions .primary-btn { width: auto; padding: 9px 18px; font-size: 14.5px; }
+.edit-actions .ghost-btn { padding: 9px 16px; font-size: 14.5px; }
+
+/* Podpowiedzi pod polem wyszukiwania */
+.suggest {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 4px 0; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain;
+}
+.sg-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px 2px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.sg-head .text-btn { text-transform: none; letter-spacing: 0; }
+.sg-row { display: flex; align-items: center; }
+.sg-item {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: transparent;
+  padding: 10px 14px; font-size: 15px; text-align: left; color: var(--ink);
+}
+.sg-item > span:not(.sg-hint) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sg-item svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.sg-item:hover, .sg-item[aria-selected="true"] { background: var(--surface-2); }
+.sg-hint { margin-left: auto; flex: none; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 999px; }
+.sg-del { margin-right: 6px; }
+.sg-del svg { width: 16px; height: 16px; }
+
+/* Pod ofertą: podobne tkaniny, więcej z tego sklepu */
+.related { display: grid; gap: 18px; }
+.related:empty { display: none; }
+.strip h2 { font: 600 17px var(--font-display); margin: 0 0 8px; }
+.strip-row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; overscroll-behavior-x: contain; }
+.strip-row::-webkit-scrollbar { display: none; }
+.rel-card { flex: none; width: 128px; border: 0; background: transparent; padding: 0; text-align: left; display: grid; gap: 4px; color: var(--ink); }
+.rel-ph { display: block; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.rel-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rel-price { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+.rel-price small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.rel-price .see-shop { font-size: 12.5px; }
+.rel-title { font-size: 12px; color: var(--muted); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Komputer: filtry w kolumnie po lewej (działają od razu); przycisk „Filtry” i nieustawione grupy chowamy */
+@media (min-width: 960px) {
+  .search-layout { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 8px; padding-left: var(--gutter-l); align-items: start; }
+  .results-col { --gutter-l: 16px; min-width: 0; }
+  .side-filters {
+    position: sticky; top: calc(var(--top-h, 150px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+    max-height: calc(100vh - var(--top-h, 150px) - 16px); overflow-y: auto; overscroll-behavior: contain;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 12px; padding: 4px 16px 16px;
+  }
+  .side-head { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 4px; border-bottom: 1px solid var(--line); }
+  .side-head h2 { margin: 0; font: 600 18px var(--font-display); }
+  .side-filters .fgroup { padding-top: 12px; }
+  .side-filters .chip { padding: 5px 10px; font-size: 13px; }
+  #open-filters { display: none; }
+  .fchip:not(.on) { display: none; }
+}

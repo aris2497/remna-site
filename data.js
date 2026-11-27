@@ -260,6 +260,39 @@
       return demo.products.find((p) => p.id === id) || null;
     }
 
+    /** Liczby przy opcjach filtrów (funkcja bazy facet_counts), np. {fibers: {silk: 120}, colors: {...}, total}.
+     *  W trybie podglądu null (bez liczb). */
+    async function facetCounts(filters) {
+      if (mode !== 'live') return null;
+      const f = JSON.stringify(R.facetParams(filters, { shopsByCountry }));
+      const { body } = await getJson('/rpc/facet_counts?f=' + encodeURIComponent(f));
+      return body && typeof body === 'object' ? body : null;
+    }
+
+    /** Kilka ofert do pasków pod ofertą: filtry → najnowsze pewne dopasowania, bez tej oferty. */
+    async function related(filters, excludeId, limit) {
+      const n = limit || 10;
+      let list;
+      if (mode === 'live') {
+        const params = R.restParams(Object.assign(R.defaultFilters(), filters), { page: 0, shopsByCountry, known: 'only' })
+          .filter(([k]) => k !== 'limit' && k !== 'offset').concat([['limit', String(n + 1)], ['offset', '0']]);
+        list = (await getJson('/products?' + R.toQueryString(params))).body;
+      } else {
+        list = R.sortLocal(demo.products.filter((p) => R.matchLocal(p, filters, { shopsByCountry, known: 'only' })), 'newest');
+      }
+      return list.filter((p) => p.id !== excludeId).slice(0, n);
+    }
+    /** Podobne tkaniny: to samo główne włókno i kolor (gdy są znane). */
+    function similar(p) {
+      const f = {};
+      if (p.fibers && p.fibers.length) f.fibers = [p.fibers[0]];
+      if (p.colors && p.colors.length) f.colors = [p.colors[0]];
+      if (!f.fibers && !f.colors) return Promise.resolve([]);
+      if (p.kind === 'leather') f.kind = 'leather';
+      return related(f, p.id);
+    }
+    function fromShop(p) { return related({ shops: [p.shop_id] }, p.id); }
+
     /** Pyta sklep, czy oferta jest jeszcze dostępna: 'available' | 'soldout' | 'gone' | null. */
     async function checkLive(product, timeoutMs) {
       const url = R.liveCheckUrl(product && product.url);
@@ -302,7 +335,7 @@
     }
 
     return {
-      init, search, countNew, byIds, details, checkLive, track, setStatsCheck,
+      init, search, countNew, byIds, details, checkLive, track, setStatsCheck, facetCounts, similar, fromShop,
       get mode() { return mode; },
       get reason() { return reason; },
       get shops() { return shops; },

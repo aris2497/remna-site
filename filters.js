@@ -936,6 +936,19 @@
       },
       remove(id) { items = items.filter((a) => a.id !== id); save(); },
       rename(id, name) { const a = items.find((x) => x.id === id); if (a) { a.name = String(name).slice(0, 60); save(); } },
+      /** Nowe filtry istniejącego alertu (edycja). Liczenie nowości zaczyna się od teraz. null = taki alert już jest. */
+      update(id, name, filters) {
+        const a = items.find((x) => x.id === id);
+        if (!a) return null;
+        const other = this.find(filters);
+        if (other && other.id !== id) return null;
+        a.name = String(name || '').slice(0, 60);
+        a.filters = normalizeFilters(filters);
+        a.seenAt = new Date(clock()).toISOString();
+        a.newCount = 0;
+        save();
+        return a;
+      },
       setNewCount(id, n) { const a = items.find((x) => x.id === id); if (a && a.newCount !== n) { a.newCount = n; save(); } },
       markSeen(id) { const a = items.find((x) => x.id === id); if (a) { a.seenAt = new Date(clock()).toISOString(); a.newCount = 0; save(); } },
       totalNew: () => items.reduce((s, a) => s + (a.newCount || 0), 0),
@@ -1007,7 +1020,132 @@
     return null;
   }
 
+  // --- Ostatnie wyszukiwania i podpowiedź „Zapisz jako alert?” (tylko na tym urządzeniu) ---
+  const MAX_RECENT = 8;
+  /** Wyszukiwanie warte zapamiętania: jest tekst albo filtr. */
+  function isSearch(f) { const n = normalizeFilters(f); return !!n.q || countActive(n) > 0; }
+  function makeRecent(storage) {
+    const KEY = 'remna-ostatnie';
+    let items = readJson(storage, KEY, []);   // [{filters, at}]
+    if (!Array.isArray(items)) items = [];
+    const save = () => writeJson(storage, KEY, items);
+    return {
+      list: () => items.slice(),
+      add(f, at) {
+        if (!isSearch(f)) return;
+        const n = normalizeFilters(f);
+        const k = filtersKey(n);
+        items = [{ filters: n, at: at || Date.now() }].concat(items.filter((x) => filtersKey(x.filters) !== k)).slice(0, MAX_RECENT);
+        save();
+      },
+      remove(f) { const k = filtersKey(f); items = items.filter((x) => filtersKey(x.filters) !== k); save(); },
+      clear() { items = []; save(); },
+    };
+  }
+  /** Ile razy (w osobnych wizytach) szukano tego samego; podpowiedź alertu najwyżej raz dla danego wyszukiwania. */
+  function makeSearchMemory(storage) {
+    const KEY = 'remna-wyszukiwania';
+    let data = readJson(storage, KEY, {});
+    if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
+    data.counts = data.counts || {};
+    data.nudged = data.nudged || {};
+    const seen = new Set();   // w tej wizycie liczymy każde wyszukiwanie raz
+    const save = () => {
+      const keys = Object.keys(data.counts);
+      if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete data.counts[k];
+      writeJson(storage, KEY, data);
+    };
+    return {
+      /** Zwraca liczbę wizyt, w których szukano tego samego (po doliczeniu tej). */
+      bump(f) {
+        const k = filtersKey(f);
+        if (!seen.has(k)) { seen.add(k); data.counts[k] = (data.counts[k] || 0) + 1; save(); }
+        return data.counts[k];
+      },
+      shouldNudge(f) { const k = filtersKey(f); return isSearch(f) && (data.counts[k] || 0) >= 2 && !data.nudged[k]; },
+      markNudged(f) { data.nudged[filtersKey(f)] = 1; save(); },
+    };
+  }
+
+  // --- Grupy filtrów (przyciski nad wynikami, małe arkusze, liczby przy opcjach) ---
+  const FILTER_GROUPS = {
+    material: ['kind', 'fibers', 'purity', 'noSynthetic'],
+    colors: ['colors'],
+    pattern: ['pattern'],
+    price: ['maxPrice'],
+    stock: ['minStock', 'stockKnown'],
+    width: ['minWidth'],
+    weight: ['weightMin', 'weightMax'],
+    shops: ['countries', 'shops'],
+    newDays: ['newDays'],
+  };
+  /** Czy w grupie jest ustawiony jakiś filtr. */
+  function groupActive(f, group) {
+    const n = normalizeFilters(f);
+    const d = defaultFilters();
+    return FILTER_GROUPS[group].some((k) => (Array.isArray(n[k]) ? n[k].length > 0 : n[k] !== d[k]));
+  }
+  /** Filtry bez tej jednej grupy (✕ na przycisku grupy, „Wyczyść” w małym arkuszu). */
+  function clearGroup(f, group) {
+    const d = defaultFilters();
+    const out = Object.assign({}, f);
+    for (const k of FILTER_GROUPS[group]) out[k] = Array.isArray(d[k]) ? [] : d[k];
+    return normalizeFilters(out);
+  }
+
+  /** Parametry funkcji bazy facet_counts: te same warunki co restParams (bez „known”) i opcje do policzenia. */
+  function facetParams(f, opts) {
+    const n = normalizeFilters(f);
+    const o = Object.assign({ now: Date.now(), shopsByCountry: {} }, opts || {});
+    const shops = allowedShops(n, o.shopsByCountry);
+    const near = {};
+    for (const c of COLORS) near[c.id] = colorsWithNear([c.id]);
+    return {
+      kind: n.kind, fibers: n.fibers, purity: n.purity, noSynthetic: n.noSynthetic, synthMax: MAX_SYNTHETIC_PCT,
+      colors: n.colors.length ? colorsWithNear(n.colors) : [], pattern: n.pattern,
+      weightMin: n.weightMin, weightMax: n.weightMax, maxPrice: n.maxPrice, minWidth: n.minWidth,
+      minStock: n.minStock, stockKnown: n.stockKnown, shops: shops || null,
+      since: n.newDays ? sinceIso(n.newDays, o.now) : null, ts: tsQuery(textQuery(n)) || null,
+      colorNear: near, priceSteps: MAX_PRICE_STEPS, widthSteps: MIN_WIDTH_STEPS, stockSteps: MIN_STOCK_STEPS,
+      weightRanges: WEIGHT_RANGES, newDays: [1, 7, 30],
+    };
+  }
+
+  /** Podpowiedzi przy pisaniu: dokończenie ostatniego słowa nazwą materiału, koloru albo rodzaju tkaniny.
+   *  Zwraca [{text, kind?, id?}] (kind/id = filtr, który to słowo włączy). Najpierw słowa w języku aplikacji. */
+  function suggest(text, lang, max) {
+    const raw = String(text || '');
+    const m = /(\S+)$/.exec(raw);
+    if (!m || /\s$/.test(raw)) return [];
+    const last = m[1].toLowerCase();
+    if (last.length < 2) return [];
+    const head = raw.slice(0, raw.length - m[1].length);
+    const pl = _plain(last);
+    const out = [];
+    const seen = new Set();
+    const add = (word, score) => {
+      const w = String(word || '').toLowerCase();
+      if (!w || w === last || seen.has(w)) return;
+      if (!(w.startsWith(last) || _plain(w).startsWith(pl))) return;
+      seen.add(w);
+      const hit = filterWord(w.split(' ')[0]);
+      out.push({ text: head + w, score: score + w.length / 100, kind: hit ? hit[0] : null, id: hit ? hit[1] : null });
+    };
+    const L = LANGS.includes(lang) ? lang : 'en';
+    for (const fb of FIBERS) if (fb.id !== 'leather') { add(fb[L], 0); add(fb.en, 1); }
+    for (const c of COLORS) { add(c[L], 0); add(c.en, 1); }
+    // rodzaje tkanin: jedno słowo z grupy (po polsku pierwsze z grupy, w innych językach angielskie, gdy pasuje)
+    for (const g of TERM_GROUPS) {
+      const ok = g.filter((t2) => !t2.startsWith('=') && !/^\d/.test(t2) && (t2.startsWith(last) || _plain(t2).startsWith(pl)) && t2 !== last);
+      if (!ok.length) continue;
+      const pref = L === 'pl' ? g[0] : g[1];
+      add(ok.includes(pref) ? pref : ok[0], 2);
+    }
+    return out.sort((a, b) => a.score - b.score).slice(0, max || 6).map(({ text: tx, kind, id }) => ({ text: tx, kind, id }));
+  }
+
   const api = {
+    makeRecent, makeSearchMemory, isSearch, FILTER_GROUPS, groupActive, clearGroup, facetParams, suggest,
     FIBERS, COLORS, MAX_PRICE_STEPS, MIN_WIDTH_STEPS, SORTS, PAGE_SIZE, LIST_FIELDS,
     PURITY_STEPS, SYNTHETIC, MAX_SYNTHETIC_PCT, syntheticShare, MIN_STOCK_STEPS, WEIGHT_RANGES, colorsWithNear,
     WEIGHT_SLIDER_MAX, WEIGHT_STEP, weightPreset, weightLabel,
